@@ -1,0 +1,10 @@
+runs/
+*.pt
+*.pth
+*.ckpt
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+wandb/
+*.egg-info/
+.env

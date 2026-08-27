@@ -1,0 +1,29 @@
+# Pre-allocation from kickoff prompt §3.
+# Total training budget: 10.0 wall-clock hours on 2xT4 (= 20 GPU-hours).
+# This tracks wall-clock hours against the milestone allocation table.
+# Inference (latent precompute, eval rollouts, VGGT decoding) does NOT count here —
+# it counts only against the separate Kaggle weekly quota (tracked manually).
+
+total_hours: 10.0
+
+milestones:
+  M1_smoke_overfit:
+    budget_hours: 0.5
+    purpose: "Pipeline correctness, pose conditioning sanity check"
+  M2_hp_transfer_5M:
+    budget_hours: 1.5
+    purpose: "muP sweep, LR/batch/warmup at smallest scale"
+  M3_ablations_15M:
+    budget_hours: 2.5
+    purpose: "REPA on/off, Muon vs AdamW, Flow vs DDPM, 2 seeds each"
+  M4_main_run_40M:
+    budget_hours: 4.0
+    purpose: "Best configuration from M3"
+  M5_rollout_finetune:
+    budget_hours: 1.0
+    purpose: "Self-forcing against drift"
+  reserve:
+    budget_hours: 0.5
+    purpose: "Repeat of a single failed run only"
+
+# Rule: if M3 needs more, it borrows from M4, never from total_hours.
