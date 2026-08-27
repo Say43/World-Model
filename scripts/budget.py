@@ -19,6 +19,7 @@ Usage:
 """
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,8 +30,11 @@ except ImportError:
     sys.exit(1)
 
 ROOT = Path(__file__).resolve().parent.parent
-LEDGER_PATH = ROOT / "budget" / "ledger.jsonl"
-ALLOCATION_PATH = ROOT / "budget" / "allocation.yaml"
+# NANOWM_LEDGER_PATH / NANOWM_ALLOCATION_PATH let tests (and only tests) point
+# this script at throwaway files instead of the real project ledger/allocation.
+# Default behavior (no env vars set) is unchanged: the real budget/ files.
+LEDGER_PATH = Path(os.environ.get("NANOWM_LEDGER_PATH", ROOT / "budget" / "ledger.jsonl"))
+ALLOCATION_PATH = Path(os.environ.get("NANOWM_ALLOCATION_PATH", ROOT / "budget" / "allocation.yaml"))
 
 
 def load_allocation():

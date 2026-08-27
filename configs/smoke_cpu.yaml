@@ -1,0 +1,51 @@
+# M0.5 infra smoke config: CPU-only, tiny dummy model/data (see
+# tests/train_fixtures.py). No GPU budget is spent running this -- it
+# exists purely so scripts/train.py and the train-infra test suite have a
+# real, versioned config to exercise end-to-end. milestone/ticket_hours
+# below map onto the real budget/allocation.yaml so `budget.py
+# check-ticket` has something valid to approve.
+
+run:
+  run_id: "smoke_cpu"
+  milestone: "M1_smoke_overfit"
+  ticket_hours: 0.001
+  purpose: "M0.5 infra smoke test on CPU: determinism/resume/NaN-watchdog plumbing, no GPU"
+  seed: 0
+  log_interval: 20
+  device: "cpu"  # forced: this config must never spend GPU-hours, even on a GPU-equipped dev box
+
+data:
+  target: "tests.train_fixtures.build_dataloader"
+  kwargs:
+    size: 2000
+    dim: 16
+    seed: 0
+    batch_size: 8
+
+model:
+  target: "tests.train_fixtures.build_model"
+  kwargs:
+    dim: 16
+    hidden: 32
+    dropout: 0.1
+
+loss:
+  target: "tests.train_fixtures.mse_loss_fn"
+
+optim:
+  lr: 0.001
+  weight_decay: 0.0
+
+trainer:
+  warmup_steps: 10
+  total_steps: 150
+  min_lr_ratio: 0.1
+  grad_clip: 1.0
+  ema_decay: 0.99
+  amp: true
+  nan_watchdog_raise: true
+  log_interval: 20
+
+checkpoint:
+  dir: "runs/smoke_cpu/checkpoints"
+  interval_steps: 50
