@@ -38,6 +38,17 @@ DEFAULT_POS_EPS = 0.35
 DEFAULT_ROT_THETA_EPS = np.deg2rad(15.0)
 VALID_LENGTHS = (32, 64, 128)
 
+# A "revisit" only means something if the model cannot simply copy the answer
+# out of its own context window. Adjacent frames along a slow camera path sit
+# well inside (pos_eps, rot_theta_eps) of each other, so without a minimum
+# temporal gap `label_revisits` labels frame i as revisiting frame i-1 and the
+# persistence metric degenerates into "can the model reproduce the previous
+# frame" -- a trivial task that measures nothing about spatial memory.
+# The gap must exceed the DiT context length (16 frames, see CLAUDE.md's
+# decision log), so a labeled revisit is always outside the attention window
+# and can only be answered from persistent memory / frustum retrieval.
+DEFAULT_MIN_REVISIT_GAP = 24
+
 
 @dataclasses.dataclass
 class Intrinsics:
@@ -173,20 +184,24 @@ def rotation_geodesic_angle(r1: np.ndarray, r2: np.ndarray) -> float:
 
 
 def label_revisits(
-    poses: np.ndarray, pos_eps: float, rot_theta_eps: float
+    poses: np.ndarray,
+    pos_eps: float,
+    rot_theta_eps: float,
+    min_gap: int = DEFAULT_MIN_REVISIT_GAP,
 ) -> List[Optional[int]]:
     """For each frame, find the earliest earlier frame within tolerance.
 
     Position distance uses Euclidean distance between camera centers
     (poses[:, :3, 3]); rotation distance uses the geodesic angle between
     the 3x3 rotation blocks. A frame revisits an earlier one only if both
-    are within tolerance.
+    are within tolerance *and* at least `min_gap` frames earlier -- see
+    DEFAULT_MIN_REVISIT_GAP for why the temporal gap is not optional.
     """
     n = poses.shape[0]
     revisit_of: List[Optional[int]] = [None] * n
     positions = poses[:, :3, 3]
     for i in range(n):
-        for j in range(i):
+        for j in range(max(0, i - min_gap + 1)):
             dpos = float(np.linalg.norm(positions[i] - positions[j]))
             if dpos > pos_eps:
                 continue
@@ -203,7 +218,10 @@ def generate_closed_circuit(
     length: int = 64,
     room_extent: Tuple[float, float, float] = (6.0, 6.0, 3.0),
     num_control_points: int = 8,
-    num_loops: float = 1.0,
+    # >1 so the tail physically overlaps the head: at length=32 a single
+    # lap has coarse enough steps that the last frame can land outside
+    # pos_eps of the first and loop closure is missed entirely.
+    num_loops: float = 1.25,
     intrinsics: Optional[Intrinsics] = None,
     pos_eps: float = DEFAULT_POS_EPS,
     rot_theta_eps: float = DEFAULT_ROT_THETA_EPS,
@@ -307,11 +325,17 @@ def generate_out_and_back(
     poses = np.zeros((length, 4, 4), dtype=np.float32)
     for i in range(half):
         poses[i] = _look_at_c2w(outbound_positions[i], outbound_forwards[i])
-    # Return leg: same physical points in reverse order, camera still faces
-    # its direction of travel (now the reverse direction).
+    # Return leg: same physical points in reverse order, camera keeping the
+    # *outbound* viewing direction (it dollies backwards rather than turning
+    # around). Facing the direction of travel would rotate every return pose
+    # by 180 degrees relative to its outbound twin, so the camera would look
+    # at a different part of the scene from the same position -- no shared
+    # content, nothing for revisit-PSNR to compare, and label_revisits would
+    # (correctly) emit zero revisit labels. Preserving the heading is what
+    # makes the return leg an actual revisit of the outbound view.
     for i in range(half):
         src = half - 1 - i
-        poses[half + i] = _look_at_c2w(outbound_positions[src], -outbound_forwards[src])
+        poses[half + i] = _look_at_c2w(outbound_positions[src], outbound_forwards[src])
 
     intr = intrinsics or make_intrinsics(width=256, height=256)
     revisit_of = label_revisits(poses, pos_eps, rot_theta_eps)

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from src.data.trajectories import (
+    DEFAULT_MIN_REVISIT_GAP,
     VALID_LENGTHS,
     generate_closed_circuit,
     generate_out_and_back,
@@ -33,16 +34,62 @@ def test_different_seed_differs():
     assert not np.array_equal(a.poses, b.poses)
 
 
+def _revisit_pairs(traj):
+    return [(i, r) for i, r in enumerate(traj.revisit_of) if r is not None]
+
+
 @pytest.mark.parametrize("length", VALID_LENGTHS)
 def test_closed_circuit_produces_revisit_labels(length):
-    traj = generate_closed_circuit(seed=3, length=length, num_loops=1.0)
-    assert traj.num_revisits >= 1, "a closed circuit must revisit its own head near the end"
+    traj = generate_closed_circuit(seed=3, length=length)
+    pairs = _revisit_pairs(traj)
+    assert pairs, "a closed circuit must revisit its own head near the end"
 
 
 @pytest.mark.parametrize("length", VALID_LENGTHS)
 def test_out_and_back_produces_multiple_revisits(length):
     traj = generate_out_and_back(seed=4, length=length)
-    assert traj.num_revisits > 1, "out-and-back return leg must revisit many outbound poses"
+    assert len(_revisit_pairs(traj)) > 1, "out-and-back return leg must revisit many outbound poses"
+
+
+@pytest.mark.parametrize("length", VALID_LENGTHS)
+@pytest.mark.parametrize("generate", [generate_closed_circuit, generate_out_and_back])
+def test_revisits_lie_outside_the_model_context_window(generate, length):
+    """A revisit inside the context window is not a persistence test.
+
+    Guards the metric itself, not just the label count: if adjacent frames
+    could be labeled as revisits, revisit-PSNR would measure "reproduce the
+    previous frame" -- answerable straight from the attention window -- and
+    would look healthy while testing nothing. Every labeled pair must be
+    further apart than DEFAULT_MIN_REVISIT_GAP, which exceeds the 16-frame
+    DiT context (see CLAUDE.md decision log).
+    """
+    traj = generate(seed=5, length=length)
+    pairs = _revisit_pairs(traj)
+    assert pairs, "no revisit labels at all -- loop closure is broken"
+    smallest = min(i - r for i, r in pairs)
+    assert smallest >= DEFAULT_MIN_REVISIT_GAP, (
+        f"revisit pair only {smallest} frames apart; inside the context window "
+        f"the model can copy the answer instead of remembering it"
+    )
+
+
+@pytest.mark.parametrize("length", VALID_LENGTHS)
+def test_out_and_back_return_leg_keeps_outbound_heading(length):
+    """Return-leg poses must share the outbound viewing direction.
+
+    Facing the direction of travel would rotate each return pose 180 degrees
+    from its outbound twin: same camera position, opposite view, no shared
+    image content for revisit-PSNR to compare.
+    """
+    traj = generate_out_and_back(seed=6, length=length)
+    half = length // 2
+    for i in (1, half // 2, half - 2):
+        src = half - 1 - i
+        drot = rotation_geodesic_angle(traj.poses[src, :3, :3], traj.poses[half + i, :3, :3])
+        assert np.degrees(drot) < 90.0, (
+            f"return frame {half + i} faces {np.degrees(drot):.1f} deg away from "
+            f"outbound frame {src} -- it is looking at a different part of the scene"
+        )
 
 
 def test_invalid_length_rejected():

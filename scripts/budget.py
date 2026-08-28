@@ -35,6 +35,25 @@ ROOT = Path(__file__).resolve().parent.parent
 # Default behavior (no env vars set) is unchanged: the real budget/ files.
 LEDGER_PATH = Path(os.environ.get("NANOWM_LEDGER_PATH", ROOT / "budget" / "ledger.jsonl"))
 ALLOCATION_PATH = Path(os.environ.get("NANOWM_ALLOCATION_PATH", ROOT / "budget" / "allocation.yaml"))
+_OVERRIDDEN = "NANOWM_LEDGER_PATH" in os.environ or "NANOWM_ALLOCATION_PATH" in os.environ
+
+
+def warn_if_overridden() -> None:
+    """Make a redirected ledger impossible to miss.
+
+    The override exists for tests, but nothing stops a stray env var in a
+    Kaggle notebook from pointing a real run at a throwaway ledger: the run
+    would burn real GPU-hours, pass its ticket check against an empty budget,
+    and leave no trace in budget/ledger.jsonl. The whole budget model rests on
+    that file being complete, so an override is always announced loudly.
+    """
+    if _OVERRIDDEN:
+        print(
+            f"WARNING: budget paths overridden by environment "
+            f"(ledger={LEDGER_PATH}, allocation={ALLOCATION_PATH}). "
+            f"For tests only -- a real run must not use this.",
+            file=sys.stderr,
+        )
 
 
 def load_allocation():
@@ -66,17 +85,17 @@ def cmd_status(args):
     alloc = load_allocation()
     entries = load_ledger()
     spent = spent_hours_by_milestone(entries)
-    total_budget = alloc["total_hours"]
+    total_budget = alloc["total_gpu_hours"]
     total_spent = sum(spent.values())
 
     print(f"nanoWM Budget Ledger — {LEDGER_PATH}")
-    print(f"{'Milestone':<22} {'Budget(h)':>10} {'Spent(h)':>10} {'Remaining(h)':>13}")
+    print(f"{'Milestone':<22} {'Budget(gpuh)':>13} {'Spent(gpuh)':>12} {'Remaining':>12}")
     for name, m in alloc["milestones"].items():
-        b = m["budget_hours"]
+        b = m["budget_gpu_hours"]
         s = spent.get(name, 0.0)
-        print(f"{name:<22} {b:>10.2f} {s:>10.3f} {b - s:>13.3f}")
+        print(f"{name:<22} {b:>13.2f} {s:>12.3f} {b - s:>12.3f}")
     print("-" * 60)
-    print(f"{'TOTAL':<22} {total_budget:>10.2f} {total_spent:>10.3f} {total_budget - total_spent:>13.3f}")
+    print(f"{'TOTAL':<22} {total_budget:>13.2f} {total_spent:>12.3f} {total_budget - total_spent:>12.3f}")
 
 
 def cmd_check_ticket(args):
@@ -84,13 +103,13 @@ def cmd_check_ticket(args):
     entries = load_ledger()
     spent = spent_hours_by_milestone(entries)
     total_spent = sum(spent.values())
-    total_budget = alloc["total_hours"]
+    total_budget = alloc["total_gpu_hours"]
 
     if args.milestone not in alloc["milestones"]:
         print(f"REJECTED: unknown milestone '{args.milestone}'", file=sys.stderr)
         sys.exit(1)
 
-    m_budget = alloc["milestones"][args.milestone]["budget_hours"]
+    m_budget = alloc["milestones"][args.milestone]["budget_gpu_hours"]
     m_spent = spent.get(args.milestone, 0.0)
     m_remaining = m_budget - m_spent
     total_remaining = total_budget - total_spent
@@ -145,7 +164,7 @@ def main():
 
     p_check = sub.add_parser("check-ticket", help="Validate a proposed run ticket against remaining budget")
     p_check.add_argument("--milestone", required=True)
-    p_check.add_argument("--hours", required=True, type=float, help="Planned wall-clock hours for this run")
+    p_check.add_argument("--hours", required=True, type=float, help="Planned GPU-hours (wall-clock x world_size) for this run")
 
     p_log = sub.add_parser("log", help="Append a completed run to the ledger")
     p_log.add_argument("--run-id", required=True)
@@ -159,6 +178,7 @@ def main():
     p_log.add_argument("--git-sha", required=True)
 
     args = p.parse_args()
+    warn_if_overridden()
     {"status": cmd_status, "check-ticket": cmd_check_ticket, "log": cmd_log}[args.command](args)
 
 

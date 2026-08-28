@@ -1,29 +1,39 @@
 # Pre-allocation from kickoff prompt §3.
-# Total training budget: 10.0 wall-clock hours on 2xT4 (= 20 GPU-hours).
-# This tracks wall-clock hours against the milestone allocation table.
-# Inference (latent precompute, eval rollouts, VGGT decoding) does NOT count here —
-# it counts only against the separate Kaggle weekly quota (tracked manually).
+# Total training budget: 10.0 wall-clock hours on 2xT4 == 20.0 GPU-hours.
+#
+# UNITS: everything below is in GPU-HOURS, not wall-clock hours.
+# The ledger records `gpu_seconds` (§3's required schema), and scripts/train.py
+# computes that as wall_clock_seconds * world_size. Budget numbers must be in
+# the same unit or the comparison is silently wrong by a factor of world_size:
+# with the earlier wall-clock numbers here, a 2-GPU run consumed budget twice
+# as fast as the table implied, which would have exhausted the project at
+# 5 wall-clock hours instead of 10. Each entry therefore lists the §3
+# wall-clock figure in its comment and doubles it for the 2xT4 setup.
+#
+# Inference (latent precompute, eval rollouts, VGGT decoding) does NOT count
+# here — it counts only against the separate Kaggle weekly quota (tracked
+# manually).
 
-total_hours: 10.0
+total_gpu_hours: 20.0  # = 10.0 wall-clock hours on 2xT4
 
 milestones:
   M1_smoke_overfit:
-    budget_hours: 0.5
+    budget_gpu_hours: 1.0  # 0.5 wall-clock
     purpose: "Pipeline correctness, pose conditioning sanity check"
   M2_hp_transfer_5M:
-    budget_hours: 1.5
+    budget_gpu_hours: 3.0  # 1.5 wall-clock
     purpose: "muP sweep, LR/batch/warmup at smallest scale"
   M3_ablations_15M:
-    budget_hours: 2.5
-    purpose: "REPA on/off, Muon vs AdamW, Flow vs DDPM, 2 seeds each"
+    budget_gpu_hours: 5.0  # 2.5 wall-clock
+    purpose: "REPA on/off and Muon vs AdamW, 2 seeds each (4 arms, see decision log)"
   M4_main_run_40M:
-    budget_hours: 4.0
+    budget_gpu_hours: 8.0  # 4.0 wall-clock
     purpose: "Best configuration from M3"
   M5_rollout_finetune:
-    budget_hours: 1.0
+    budget_gpu_hours: 2.0  # 1.0 wall-clock
     purpose: "Self-forcing against drift"
   reserve:
-    budget_hours: 0.5
+    budget_gpu_hours: 1.0  # 0.5 wall-clock
     purpose: "Repeat of a single failed run only"
 
-# Rule: if M3 needs more, it borrows from M4, never from total_hours.
+# Rule: if M3 needs more, it borrows from M4, never from total_gpu_hours.

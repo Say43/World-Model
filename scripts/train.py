@@ -40,6 +40,10 @@ from src.train.utils import seed_everything
 BUDGET_SCRIPT = ROOT / "scripts" / "budget.py"
 
 
+class TicketExceeded(RuntimeError):
+    """Raised when a run outlives the budget ticket it was approved for."""
+
+
 def _import_target(dotted_path: str):
     module_name, _, attr = dotted_path.rpartition(".")
     module = importlib.import_module(module_name)
@@ -165,9 +169,24 @@ def main(argv=None) -> int:
         max_steps = trainer_config.total_steps
         log_interval = run_cfg.get("log_interval", trainer_config.log_interval)
 
+        # "A run that exceeds its ticket is aborted. No extensions without a
+        # new ticket." (CLAUDE.md §budget) Checking the ticket only at startup
+        # enforces nothing -- the run could overshoot arbitrarily and the
+        # ledger would just record the overrun after the fact, with the budget
+        # already spent. ticket_hours is GPU-hours, so the wall-clock deadline
+        # is that divided by world_size.
+        deadline_wall_seconds = ticket_hours * 3600.0 / max(ddp_ctx.world_size, 1)
+
         def on_step(res):
             if (res["step"] + 1) % log_interval == 0 or res["nan_event"] is not None:
                 print(f"step {res['step']} loss {res['loss']:.6f} grad_norm {res['grad_norm']:.4f}")
+            elapsed = time.time() - start_ts
+            if elapsed > deadline_wall_seconds:
+                raise TicketExceeded(
+                    f"run exceeded its {ticket_hours}h GPU-hour ticket at step "
+                    f"{res['step']} ({elapsed / 60.0:.1f} wall-clock minutes on "
+                    f"{ddp_ctx.world_size} device(s)); aborting per budget rules"
+                )
 
         trainer.fit(
             dataloader,
@@ -181,6 +200,19 @@ def main(argv=None) -> int:
     except SigtermInterrupt as e:
         status = "sigterm"
         result_str = f"interrupted by SIGTERM at step {e.step}, checkpoint saved"
+    except TicketExceeded as e:
+        # Not an error: the budget rule working as designed. Save what we have
+        # so the spent GPU-hours are not simply lost, then record the overrun
+        # honestly in the ledger.
+        status = "ticket_exceeded"
+        step_now = trainer.step if trainer is not None else -1
+        if ckpt_manager is not None and trainer is not None:
+            try:
+                ckpt_manager.save(trainer.state_dict(), step_now)
+            except Exception as save_exc:  # noqa: BLE001
+                print(f"WARNING: could not checkpoint on ticket abort: {save_exc}", file=sys.stderr)
+        result_str = f"{e}"
+        print(f"ABORTED: {e}", file=sys.stderr)
     except Exception as e:  # noqa: BLE001 -- must still log to the ledger before re-raising
         status = "error"
         result_str = f"aborted with exception: {e!r}"
@@ -206,7 +238,9 @@ def main(argv=None) -> int:
         except Exception as log_exc:  # noqa: BLE001
             print(f"WARNING: failed to write budget ledger entry: {log_exc}", file=sys.stderr)
 
-    return 0
+    # Non-zero on a ticket abort so a driving notebook or shell script can tell
+    # a completed run from one the budget rules cut short.
+    return 2 if status == "ticket_exceeded" else 0
 
 
 if __name__ == "__main__":

@@ -120,10 +120,33 @@ class Trainer:
                 raise NaNDetected(event)
 
         if not skip_step:
+            # GradScaler can still veto the step internally: if it found
+            # inf/nan while unscaling it silently no-ops `step` and lowers the
+            # scale in `update`. Our own checks above catch nearly all of that
+            # (a non-finite grad makes clip_grad_norm_ non-finite), but the
+            # scaler is the authority on its own decision, so ask it rather
+            # than assume. A drop in scale means the step did not happen --
+            # without this the run would count a skipped step as a real one
+            # and the loss curve would quietly stall.
+            scale_before = self.scaler.get_scale() if self.amp_enabled else None
             self.scaler.step(self.optimizer)
             self.scaler.update()
-            self.scheduler.step()
-            self.ema.update(self.model)
+            if scale_before is not None and self.scaler.get_scale() < scale_before:
+                event = NaNEvent(
+                    step=self.step,
+                    kind="grad",
+                    detail=(
+                        f"GradScaler skipped the optimizer step (scale "
+                        f"{scale_before} -> {self.scaler.get_scale()})"
+                    ),
+                )
+                self._report_nan(event)
+                skip_step = True
+                if self.config.nan_watchdog_raise:
+                    raise NaNDetected(event)
+            else:
+                self.scheduler.step()
+                self.ema.update(self.model)
 
         loss_detached = loss.detach()
         loss_value = float(loss_detached.item()) if torch.isfinite(loss_detached).all() else float("nan")
