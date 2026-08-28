@@ -163,6 +163,36 @@ Needs the user's sign-off before M3 is configured.
 (see M0 table below), and it drives every downstream step-time estimate.
 Model code must therefore be config-driven on this parameter, not hardcoded.
 
+### Measured on 2x Tesla T4 (results/profile_2xt4_v2.json)
+
+Real measurements, torch 2.10, batch 8, single device. These replace the
+earlier analytical estimate, which was wrong in two ways that mattered.
+
+Steps that fit each milestone budget, with torch.compile:
+
+| tokens/frame | M3 per arm (1.25 GPU-h, 15M) | M4 (8 GPU-h, 40M) |
+|---|---|---|
+| 16 | 151,873 | 475,091 |
+| 64 | 29,479 | 97,889 |
+| 256 | 2,639 | **OOM** |
+
+**torch.compile is mandatory, not optional.** The estimate said to skip it
+for M1-M3 and expect 10-25% at best. Measured speedup is 1.2x to 2.6x (5M/16
+tokens: 26.5ms -> 10.2ms) and it also cuts peak VRAM by up to 40%. It
+compiled on sm75 in every configuration; nothing fell back to eager.
+
+**256 tokens/frame is out of reach.** 40M OOMs at batch 8 even compiled, and
+15M leaves 2,639 steps per ablation arm, which cannot support a measurement.
+This rules out SD-VAE f8 at 256px, and it constrains M0 to configurations
+yielding 64 tokens/frame or fewer.
+
+**MFU is 4-14% everywhere**, so these models are launch-overhead-bound rather
+than compute-bound on T4. That is why compile helps so much, and it means
+larger batches are worth more than they would be in a compute-bound regime.
+
+**fp16 is stable**: zero non-finite losses and zero GradScaler skips across
+every configuration measured.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |
