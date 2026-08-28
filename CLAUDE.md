@@ -145,6 +145,20 @@ REPA's payoff is itself what M3 measures; paying double precompute for an
 untested assumption is premature. Revisit only if M3 shows REPA matters and
 feature quality is the suspected limiter.
 
+**Proposed, NOT yet decided — M3 statistical power.** With 2 seeds per arm
+and ~20k steps at 15M, effects will likely sit inside seed variance, and the
+gate would then block for lack of power rather than lack of effect. Two
+changes would raise power at zero extra budget, and eval/ should be built so
+they stay possible:
+  1. *Paired comparisons.* Run both arms of an axis on the same seed, data
+     order, and init, and analyze the per-seed difference rather than the
+     absolute values. This removes the dominant variance component before it
+     enters the measurement.
+  2. *Learning curves, not endpoints.* An endpoint is one data point per run;
+     the curve is hundreds. Two curves separating over their whole length is
+     far more defensible than a single final number, at identical compute.
+Needs the user's sign-off before M3 is configured.
+
 **Open, blocked on M0:** tokens per frame. The autoencoder choice sets it
 (see M0 table below), and it drives every downstream step-time estimate.
 Model code must therefore be config-driven on this parameter, not hardcoded.

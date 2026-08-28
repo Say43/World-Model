@@ -117,7 +117,10 @@ def test_train_script_runs_and_logs_ledger_when_ticket_approved(tmp_path):
 
     ckpt_dir = tmp_path / "checkpoints"
     config_path = tmp_path / "config.yaml"
-    _write_config(config_path, ckpt_dir, ticket_hours=0.001)
+    # 0.05 GPU-hours = 3 wall-clock minutes on one device: comfortably more
+    # than this smoke run needs, so the ticket deadline is not what is under
+    # test here (that is test_run_is_aborted_when_it_outlives_its_ticket).
+    _write_config(config_path, ckpt_dir, ticket_hours=0.05)
 
     env = os.environ.copy()
     env["NANOWM_LEDGER_PATH"] = str(ledger)
