@@ -75,20 +75,28 @@ def _load_dc_ae(model_id: str, resolution: int) -> FrozenAE:
 # DC-AE compresses by 32x (f32) or 16x (f16) spatially; token grid is
 # (resolution / factor)^2.
 CANDIDATES: List[AECandidate] = [
+    # Repo IDs must carry the "-diffusers" suffix: the plain mit-han-lab/*
+    # repos ship the original (non-diffusers) checkpoint format and do not
+    # load via AutoencoderDC.from_pretrained. There is also no f16 variant --
+    # the DC-AE family is f32/f64/f128 (verified against the diffusers docs);
+    # an earlier version of this list assumed f16 existed and it does not.
     AECandidate(
-        name="dc-ae-f32@128px", resolution=128, tokens_per_frame=16,
+        name="dc-ae-f32-sana@128px", resolution=128, tokens_per_frame=16,
         license="Apache-2.0",
-        loader=lambda: _load_dc_ae("mit-han-lab/dc-ae-f32c32-sana-1.0", 128),
+        loader=lambda: _load_dc_ae("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers", 128),
     ),
     AECandidate(
-        name="dc-ae-f32@256px", resolution=256, tokens_per_frame=64,
+        name="dc-ae-f32-sana@256px", resolution=256, tokens_per_frame=64,
         license="Apache-2.0",
-        loader=lambda: _load_dc_ae("mit-han-lab/dc-ae-f32c32-sana-1.0", 256),
+        loader=lambda: _load_dc_ae("mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers", 256),
     ),
     AECandidate(
-        name="dc-ae-f16@128px", resolution=128, tokens_per_frame=64,
+        # f64, trained on ImageNet reconstruction rather than as a
+        # text-to-image diffusion backbone AE -- a useful contrast to the
+        # sana variants above at the same 16 tok/frame budget.
+        name="dc-ae-f64-in@256px", resolution=256, tokens_per_frame=16,
         license="Apache-2.0",
-        loader=lambda: _load_dc_ae("mit-han-lab/dc-ae-f16c32-in-1.0", 128),
+        loader=lambda: _load_dc_ae("mit-han-lab/dc-ae-f64c128-in-1.0-diffusers", 256),
     ),
 ]
 
