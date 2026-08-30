@@ -48,9 +48,30 @@ def load_ema_model(checkpoint_dir: Path, preset: str, context_length: int, devic
 
     model = build_causal_dit(preset, context_length=context_length).to(device)
     ema_shadow = state["ema"]
+    # torch.compile's OptimizedModule wrapper (scripts/train.py compiles
+    # models by default) can rename or drop keys from .state_dict()
+    # relative to the uncompiled module it wraps -- observed on the smoke
+    # checkpoint: every key matched except frame_pos_embed, a bare
+    # nn.Parameter assigned directly on CausalDiT rather than living inside
+    # a submodule. Strip a "_orig_mod." prefix if present, and fall back to
+    # the raw (non-EMA) trained weights for any key genuinely missing from
+    # the EMA shadow, so a naming quirk degrades gracefully instead of
+    # crashing the whole eval.
+    def _strip_prefix(d, prefix="_orig_mod."):
+        return {(k[len(prefix):] if k.startswith(prefix) else k): v for k, v in d.items()}
+
+    ema_shadow = _strip_prefix(ema_shadow)
+    raw_model_sd = _strip_prefix(state["model"])
     msd = model.state_dict()
+    missing = [k for k in msd if k not in ema_shadow]
+    if missing:
+        print(f"WARNING: {len(missing)} key(s) missing from EMA shadow, "
+              f"falling back to raw trained weights: {missing}", file=sys.stderr)
     for k in msd:
-        msd[k].copy_(ema_shadow[k].to(dtype=msd[k].dtype, device=device))
+        source = ema_shadow.get(k, raw_model_sd.get(k))
+        if source is None:
+            raise KeyError(f"'{k}' missing from both EMA shadow and raw model weights in checkpoint")
+        msd[k].copy_(source.to(dtype=msd[k].dtype, device=device))
     model.eval()
     return model, state.get("step", -1)
 
