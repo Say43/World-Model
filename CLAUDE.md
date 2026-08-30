@@ -159,7 +159,19 @@ they stay possible:
      far more defensible than a single final number, at identical compute.
 Needs the user's sign-off before M3 is configured.
 
-**Open, blocked on M0:** tokens per frame. The autoencoder choice sets it
+**2026-08-30 — M0 decided: dc-ae-f64c128-in-1.0-diffusers @ 256px, 16
+tokens/frame** (results/m0_ae_ceiling.json, measured on 2xT4). Beat every
+other candidate on both metrics at a quarter of the tokens of the runner-up:
+
+| candidate | tok/frame | PSNR mean | PSNR min | LPIPS mean |
+|---|---|---|---|---|
+| dc-ae-f32-sana@128px | 16 | 40.68 dB | 29.38 dB | 0.0079 |
+| **dc-ae-f64-in@256px** | **16** | **46.01 dB** | **35.25 dB** | **0.0043** |
+| dc-ae-f32-sana@256px | 64 | 44.29 dB | 34.78 dB | 0.0045 |
+
+The ImageNet-reconstruction-trained AE beats the diffusion-backbone-trained
+one on pure fidelity, as expected going in. 16 tokens/frame also
+quadruples the usable step budget from the T4 profile relative to 64. The autoencoder choice sets it
 (see M0 table below), and it drives every downstream step-time estimate.
 Model code must therefore be config-driven on this parameter, not hardcoded.
 
