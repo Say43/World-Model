@@ -51,3 +51,21 @@ def restore_rng_state(state: dict) -> None:
     torch.set_rng_state(state["torch_cpu"])
     if "torch_cuda" in state and torch.cuda.is_available():
         torch.cuda.set_rng_state_all(state["torch_cuda"])
+
+
+def unwrap_compiled(model):
+    """Return the original nn.Module underneath a torch.compile wrapper.
+
+    Checkpoints must always be built from the uncompiled module: whether a
+    model happens to be compiled is a runtime performance decision (the
+    trainer compiles by default, see scripts/train.py), not something a
+    checkpoint's *contents* should depend on. Observed in practice on a
+    trained checkpoint's EMA shadow -- 'frame_pos_embed', a bare
+    nn.Parameter assigned directly on CausalDiT rather than living inside a
+    submodule, was dropped from a compiled OptimizedModule's .state_dict(),
+    and other keys came back with mismatched shapes. Rather than have every
+    checkpoint consumer work around torch.compile's .state_dict() quirks
+    individually, this is applied once at the point state_dict()/
+    load_state_dict() touch the model.
+    """
+    return getattr(model, "_orig_mod", model)

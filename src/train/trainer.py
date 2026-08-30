@@ -25,7 +25,7 @@ import torch.nn as nn
 from .ema import EMA
 from .nan_watchdog import NaNEvent, NaNDetected, check_finite
 from .scheduler import WarmupScheduler
-from .utils import capture_rng_state, restore_rng_state
+from .utils import capture_rng_state, restore_rng_state, unwrap_compiled
 
 logger = logging.getLogger("nanowm.train.trainer")
 
@@ -89,7 +89,7 @@ class Trainer:
             total_steps=config.total_steps,
             min_lr_ratio=config.min_lr_ratio,
         )
-        self.ema = EMA(model, decay=config.ema_decay)
+        self.ema = EMA(unwrap_compiled(model), decay=config.ema_decay)
         self.step = 0
         self.nan_events: list[NaNEvent] = []
 
@@ -146,7 +146,7 @@ class Trainer:
                     raise NaNDetected(event)
             else:
                 self.scheduler.step()
-                self.ema.update(self.model)
+                self.ema.update(unwrap_compiled(self.model))
 
         loss_detached = loss.detach()
         loss_value = float(loss_detached.item()) if torch.isfinite(loss_detached).all() else float("nan")
@@ -201,7 +201,10 @@ class Trainer:
     def state_dict(self) -> dict:
         return {
             "step": self.step,
-            "model": self.model.state_dict(),
+            # Always the uncompiled module's state_dict -- see
+            # unwrap_compiled's docstring for why a checkpoint must not
+            # depend on whether self.model happens to be torch.compile-wrapped.
+            "model": unwrap_compiled(self.model).state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "scaler": self.scaler.state_dict(),
             "scheduler": self.scheduler.state_dict(),
@@ -211,7 +214,7 @@ class Trainer:
 
     def load_state_dict(self, state: dict) -> None:
         self.step = state["step"]
-        self.model.load_state_dict(state["model"])
+        unwrap_compiled(self.model).load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
         self.scaler.load_state_dict(state["scaler"])
         self.scheduler.load_state_dict(state["scheduler"])
