@@ -1,0 +1,56 @@
+# M1 gate (CLAUDE.md): 5M model, one scene, pose-conditioned novel-view
+# overfit. Pass = reconstruction near the M0 AE ceiling (PSNR ~46 dB,
+# LPIPS ~0.0043 -- results/m0_ae_ceiling.json). If it can't get close,
+# Plucker conditioning is broken; debug before proceeding to M2.
+#
+# Data: scripts/preprocess/precompute_dataset.py --tier m1 must have been
+# run first, producing one 128-frame trajectory encoded through the
+# M0-chosen AE (dc-ae-f64-in, 16 tokens/frame) at data.kwargs.data_dir.
+#
+# ticket_hours is intentionally far under M1's 1.0 GPU-hour milestone
+# allocation: this is a first real-hardware smoke run of the full pipeline
+# (data -> model -> loss -> checkpoint -> ledger), not the full overfit
+# budget. Write a second ticket for the rest of M1's allocation once this
+# is confirmed to run cleanly end to end.
+
+run:
+  run_id: "m1_overfit_5m_smoke"
+  milestone: "M1_smoke_overfit"
+  ticket_hours: 0.1
+  purpose: "First real-hardware run: confirm data->model->loss->checkpoint->ledger on 2xT4 before spending the rest of M1's budget"
+  seed: 0
+  log_interval: 50
+
+data:
+  target: "src.train.dataset.build_dataloader"
+  kwargs:
+    data_dir: "/kaggle/working/nanowm_data/m1"
+    context_length: 16
+    batch_size: 8
+
+model:
+  target: "src.train.model_factory.build_causal_dit"
+  kwargs:
+    preset: "5m"
+    context_length: 16
+
+loss:
+  target: "src.train.losses.rectified_flow_loss"
+
+optim:
+  lr: 0.0003
+  weight_decay: 0.0
+
+trainer:
+  warmup_steps: 100
+  total_steps: 5000
+  min_lr_ratio: 0.1
+  grad_clip: 1.0
+  ema_decay: 0.99
+  amp: true
+  nan_watchdog_raise: true
+  log_interval: 50
+
+checkpoint:
+  dir: "/kaggle/working/runs/m1_overfit_5m/checkpoints"
+  interval_steps: 500

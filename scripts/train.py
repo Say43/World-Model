@@ -146,6 +146,19 @@ def main(argv=None) -> int:
     try:
         model = build_model(cfg)
         model = wrap_model(model, ddp_ctx)
+        # Measured on 2xT4 (CLAUDE.md "Measured on 2x Tesla T4"): compile
+        # gives 1.2x-2.6x, not the 10-25% the pre-hardware estimate assumed,
+        # and cuts peak VRAM by up to 40%. It compiled cleanly in every
+        # configuration profiled, so default it on for CUDA runs; still
+        # config-gated (trainer.compile: false) in case a future
+        # architecture change hits a shape torch.compile can't handle, and
+        # a compile failure degrades to eager rather than aborting the run.
+        if ddp_ctx.device.type == "cuda" and cfg["trainer"].get("compile", True):
+            try:
+                model = torch.compile(model, mode="reduce-overhead", dynamic=False)
+                print("torch.compile: enabled")
+            except Exception as exc:  # noqa: BLE001
+                print(f"torch.compile failed, continuing eager: {exc!r}", file=sys.stderr)
         optimizer = torch.optim.AdamW(
             model.parameters(),
             lr=cfg["optim"]["lr"],
