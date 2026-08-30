@@ -205,6 +205,20 @@ larger batches are worth more than they would be in a compute-bound regime.
 **fp16 is stable**: zero non-finite losses and zero GradScaler skips across
 every configuration measured.
 
+**2026-08-30 — M1 gate: full pipeline verified end to end, gate itself not
+yet passed** (results/m1_gate_smoke.json). Checkpoint from the 0.1-GPU-hour
+smoke ticket (~3,968 steps): PSNR 13.06 dB / LPIPS 0.60 against the M0
+ceiling's 46.01 dB / 0.0043. Not a Plucker-conditioning failure per the M1
+gate's stated debug trigger -- at 16 tok/frame the T4 profile gives ~352k
+steps/GPU-hour for the 5M preset, so this checkpoint has seen roughly 1% of
+one GPU-hour's worth of steps. Getting the sampler and eval scripts working
+at all (8 Kaggle attempts, each hitting a distinct real bug: AE scaling
+factor, dataset mount timing/path, code not re-uploaded, torch.load
+weights_only default, torch.compile dropping/misshaping checkpoint keys,
+context_length inferred from the wrong axis) was the actual purpose of this
+ticket. Next: a real M1 training ticket against the 0.789 GPU-hours
+remaining in M1's allocation, then re-run scripts/run_m1_gate.py.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |
