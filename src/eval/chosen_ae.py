@@ -61,3 +61,25 @@ def encode_frames(model, frames, device: str = "cuda"):
         )
         tokens = latent.permute(0, 2, 3, 1).reshape(n, h * w, c)
         return tokens.cpu().numpy().astype("float32")
+
+
+def decode_tokens(model, tokens, device: str = "cuda"):
+    """Inverse of encode_frames: (N, TOKENS_PER_FRAME, LATENT_CHANNELS) ->
+    (N, RESOLUTION, RESOLUTION, 3) float32 numpy in [0, 1].
+
+    Divides out the same scaling_factor encode_frames applied, so a
+    round-trip through encode_frames -> decode_tokens reproduces the raw
+    AE's own encode -> decode behavior (the M0 ceiling this is measured
+    against was established that way, in ae_ceiling.py).
+    """
+    import torch
+
+    with torch.no_grad():
+        n = tokens.shape[0]
+        latent = torch.from_numpy(tokens).float().to(device)
+        latent = latent.reshape(n, LATENT_GRID, LATENT_GRID, LATENT_CHANNELS).permute(0, 3, 1, 2)
+        scaling_factor = getattr(model.config, "scaling_factor", 1.0)
+        latent = latent / scaling_factor
+        out = model.decode(latent).sample
+        out = ((out.clamp(-1, 1) + 1.0) / 2.0).permute(0, 2, 3, 1).cpu().numpy()
+        return out.astype("float32")
