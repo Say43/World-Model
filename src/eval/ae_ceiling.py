@@ -55,18 +55,34 @@ def _load_dc_ae(model_id: str, resolution: int) -> FrozenAE:
     from diffusers import AutoencoderDC
 
     class _DCAE(FrozenAE):
+        # First Kaggle run OOM-killed (SIGKILL) here: reconstruct() ran the
+        # whole 200-frame set through encode+decode as one batch, and the
+        # model/tensors were never moved off CPU, so encoder/decoder
+        # activations for batch=200 at up to 256px blew past the kernel's
+        # RAM limit. The kill has no Python traceback, which is why it
+        # looked like nothing was wrong until the exit code was checked.
+        BATCH_SIZE = 16
+
         def __init__(self):
-            self.model = AutoencoderDC.from_pretrained(model_id, torch_dtype=torch.float32)
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.model = AutoencoderDC.from_pretrained(model_id, torch_dtype=torch.float32).to(self.device)
             self.model.eval()
             self.resolution = resolution
 
         @torch.no_grad()
         def reconstruct(self, frames: np.ndarray) -> np.ndarray:
-            x = torch.from_numpy(frames).permute(0, 3, 1, 2).float() * 2.0 - 1.0
-            latent = self.model.encode(x).latent
-            out = self.model.decode(latent).sample
-            out = ((out.clamp(-1, 1) + 1.0) / 2.0).permute(0, 2, 3, 1).numpy()
-            return out.astype(np.float32)
+            outputs = []
+            for start in range(0, frames.shape[0], self.BATCH_SIZE):
+                chunk = frames[start:start + self.BATCH_SIZE]
+                x = torch.from_numpy(chunk).permute(0, 3, 1, 2).float().to(self.device) * 2.0 - 1.0
+                latent = self.model.encode(x).latent
+                out = self.model.decode(latent).sample
+                out = ((out.clamp(-1, 1) + 1.0) / 2.0).permute(0, 2, 3, 1).cpu().numpy()
+                outputs.append(out.astype(np.float32))
+                del x, latent, out
+                if self.device == "cuda":
+                    torch.cuda.empty_cache()
+            return np.concatenate(outputs, axis=0)
 
     return _DCAE()
 
