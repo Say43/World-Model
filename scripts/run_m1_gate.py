@@ -39,7 +39,12 @@ def load_ema_model(checkpoint_dir: Path, preset: str, context_length: int, devic
     or eval should sample from."""
     pointer = json.loads((checkpoint_dir / "latest.json").read_text())
     ckpt_path = checkpoint_dir / pointer["path"]  # relative filename, per CheckpointManager.save
-    state = torch.load(ckpt_path, map_location=device)
+    # weights_only=True (torch>=2.6 default) rejects the numpy arrays our own
+    # RNG-state capture stores (src/train/utils.py:capture_rng_state) --
+    # numpy._core.multiarray._reconstruct isn't on the default allowlist.
+    # Safe to disable here: this checkpoint was produced by our own
+    # CheckpointManager, not an untrusted source.
+    state = torch.load(ckpt_path, map_location=device, weights_only=False)
 
     model = build_causal_dit(preset, context_length=context_length).to(device)
     ema_shadow = state["ema"]
