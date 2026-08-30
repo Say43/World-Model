@@ -12,9 +12,10 @@ import sys
 from pathlib import Path
 
 import torch
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from run_m1_gate import load_ema_model  # noqa: E402
+from run_m1_gate import DEFAULT_CONTEXT_LENGTH, load_ema_model  # noqa: E402
 
 
 def _write_fake_checkpoint(tmp_path, real_state_dict, missing_from_ema=()):
@@ -71,3 +72,42 @@ def test_load_ema_model_strips_orig_mod_prefix(tmp_path):
     model, _ = load_ema_model(tmp_path, "5m", context_length=16, device="cpu")
     for k, v in reference.state_dict().items():
         torch.testing.assert_close(model.state_dict()[k], v)
+
+
+def test_default_context_length_matches_m1_config():
+    """Regression guard for a real failure: run_m1_gate.py originally
+    inferred context_length from the precomputed trajectory's full length
+    (128 frames for the M1 tier) instead of the window size the checkpoint
+    was actually trained with (16, per configs/m1_overfit_5m.yaml). That
+    built a fresh model with a wrongly-shaped frame_pos_embed, surfacing
+    only later as a `copy_` shape mismatch when loading the checkpoint --
+    not at model-construction time, where the real cause would have been
+    obvious. --context-length must default to the training config's value;
+    if that config ever changes, this test forces an explicit decision
+    here too rather than a silent mismatch on the next Kaggle run.
+    """
+    config = yaml.safe_load(
+        (Path(__file__).resolve().parent.parent / "configs" / "m1_overfit_5m.yaml").read_text()
+    )
+    trained_context_length = config["model"]["kwargs"]["context_length"]
+    assert DEFAULT_CONTEXT_LENGTH == trained_context_length
+
+
+def test_load_ema_model_rejects_context_length_mismatching_checkpoint(tmp_path):
+    """The actual failure mode this guards against: building a fresh model
+    at a DIFFERENT context_length than the checkpoint was trained with
+    silently succeeds at construction time (both are valid DiTConfigs) and
+    only fails later, confusingly, as a shape mismatch inside copy_. Assert
+    that failure happens (so the behavior is pinned down), and that the
+    mismatch is exactly the context_length axis, not something else.
+    """
+    from src.train.model_factory import build_causal_dit
+
+    trained_at_16 = build_causal_dit("5m", context_length=16)
+    _write_fake_checkpoint(tmp_path, trained_at_16.state_dict())
+
+    try:
+        load_ema_model(tmp_path, "5m", context_length=128, device="cpu")
+        assert False, "expected a shape mismatch when context_length doesn't match training"
+    except RuntimeError as exc:
+        assert "size" in str(exc).lower()

@@ -76,11 +76,27 @@ def load_ema_model(checkpoint_dir: Path, preset: str, context_length: int, devic
     return model, state.get("step", -1)
 
 
+# Must match configs/m1_overfit_5m.yaml's model.kwargs.context_length --
+# see the --context-length help text for why this can't be inferred from
+# the precomputed trajectory's length instead.
+DEFAULT_CONTEXT_LENGTH = 16
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--checkpoint-dir", required=True, help="Directory containing latest.json + ckpt_*.pt")
     p.add_argument("--data-dir", required=True, help="Directory of precomputed M1 .npz trajectories")
     p.add_argument("--preset", default="5m")
+    p.add_argument("--context-length", type=int, default=DEFAULT_CONTEXT_LENGTH,
+                   help="Must match the context_length the checkpoint was trained with "
+                        "(configs/*.yaml's model.kwargs.context_length), NOT the full "
+                        "precomputed trajectory length -- a 128-frame M1 trajectory is "
+                        "windowed into 16-frame training examples by "
+                        "src.train.dataset.TrajectoryWindowDataset, and building a fresh "
+                        "model at the trajectory's full length silently constructs the "
+                        "wrong-shaped frame_pos_embed instead of failing loudly at build "
+                        "time (the mismatch only surfaces later, as a copy_ shape error "
+                        "when loading the checkpoint).")
     p.add_argument("--num-sample-steps", type=int, default=50)
     p.add_argument("--out", default="results/m1_gate.json")
     p.add_argument("--skip-lpips", action="store_true")
@@ -91,8 +107,18 @@ def main(argv=None) -> int:
     if not npz_paths:
         raise FileNotFoundError(f"no .npz trajectories in {args.data_dir}")
     data = np.load(npz_paths[0])
-    poses_np, intrinsics_np = data["poses"], data["intrinsics"]
-    context_length = poses_np.shape[0]
+    context_length = args.context_length
+    if data["poses"].shape[0] < context_length:
+        raise ValueError(
+            f"trajectory has only {data['poses'].shape[0]} frames, need at least "
+            f"{context_length} for one context window"
+        )
+    # Evaluate on the trajectory's first window: consistent with what the
+    # training windows actually looked like, and sufficient for M1's
+    # reconstruction-quality question (persistence/revisit evaluation is
+    # M4+, not this gate).
+    poses_np = data["poses"][:context_length]
+    intrinsics_np = data["intrinsics"]
 
     model, step = load_ema_model(Path(args.checkpoint_dir), args.preset, context_length, device)
     print(f"Loaded EMA weights from step {step}")
@@ -108,7 +134,7 @@ def main(argv=None) -> int:
     ae = load_chosen_ae(device=device)
     sampled_frames = decode_tokens(ae, sampled_tokens, device=device)
 
-    ground_truth_tokens = data["latents"]
+    ground_truth_tokens = data["latents"][:context_length]
     ground_truth_frames = decode_tokens(ae, ground_truth_tokens, device=device)
 
     psnr_values = [psnr(ground_truth_frames[i], sampled_frames[i]) for i in range(context_length)]
