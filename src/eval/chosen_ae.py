@@ -43,6 +43,17 @@ def encode_frames(model, frames, device: str = "cuda"):
     with torch.no_grad():
         x = torch.from_numpy(frames).permute(0, 3, 1, 2).float().to(device) * 2.0 - 1.0
         latent = model.encode(x).latent  # (N, C, H, W)
+        # Standard diffusers convention (see AutoencoderKL/SD-VAE usage):
+        # raw encoder output is scaled to roughly unit variance before being
+        # used as a diffusion target, and divided back out before decode.
+        # The M1 smoke run's first real Kaggle attempt hit an inf gradient
+        # at step 55 without this -- unscaled DC-AE latents at an unknown
+        # magnitude, used directly as a rectified-flow target, is a
+        # plausible fp16 instability source. M0's PSNR/LPIPS numbers are
+        # unaffected: ae_ceiling.py round-trips encode->decode with no
+        # scaling touched at all, which is scale-neutral by construction.
+        scaling_factor = getattr(model.config, "scaling_factor", 1.0)
+        latent = latent * scaling_factor
         n, c, h, w = latent.shape
         assert h * w == TOKENS_PER_FRAME, (
             f"expected {TOKENS_PER_FRAME} tokens/frame, got {h}x{w}={h * w} "
