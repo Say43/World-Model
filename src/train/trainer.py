@@ -56,6 +56,20 @@ class TrainerConfig:
     amp: bool = True
     nan_watchdog_raise: bool = True
     log_interval: int = 50
+    # GradScaler defaults (growth_interval=2000) doubled the scale three
+    # times in a row on two consecutive M1 runs -- 65536 -> 524288 by step
+    # ~6000 -- and both times an inf gradient followed within ~40-80 steps,
+    # independent of the LR schedule (one run had LR near peak there, the
+    # other had it decayed to ~23%, same failure point either way). Small
+    # activations at that scale factor are a plausible fp16 overflow
+    # source. growth_interval defaults far higher here so scale growth
+    # essentially never triggers within realistic per-milestone step
+    # counts (M1-M5 top out in the low hundreds of thousands per the
+    # measured T4 throughput), rather than compounding unboundedly.
+    grad_scaler_init_scale: float = 65536.0
+    grad_scaler_growth_factor: float = 2.0
+    grad_scaler_backoff_factor: float = 0.5
+    grad_scaler_growth_interval: int = 100_000
 
     @classmethod
     def from_dict(cls, d: dict) -> "TrainerConfig":
@@ -82,7 +96,14 @@ class Trainer:
         # so the code path is exercised without changing numerics needed
         # for bitwise determinism tests.
         self.amp_enabled = bool(config.amp and self.device.type == "cuda")
-        self.scaler = torch.amp.GradScaler(device="cuda", enabled=self.amp_enabled)
+        self.scaler = torch.amp.GradScaler(
+            device="cuda",
+            enabled=self.amp_enabled,
+            init_scale=config.grad_scaler_init_scale,
+            growth_factor=config.grad_scaler_growth_factor,
+            backoff_factor=config.grad_scaler_backoff_factor,
+            growth_interval=config.grad_scaler_growth_interval,
+        )
         self.scheduler = WarmupScheduler(
             optimizer,
             warmup_steps=config.warmup_steps,
