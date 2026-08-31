@@ -219,6 +219,18 @@ class Trainer:
             if checkpoint_manager is not None and checkpoint_interval and self.step % checkpoint_interval == 0:
                 checkpoint_manager.save(self.state_dict(), self.step)
 
+        # A run that reaches max_steps normally is not guaranteed to land on
+        # a checkpoint_interval multiple -- e.g. total_steps=8000 with
+        # interval=25000 never fires the periodic save above at all. That
+        # cost an entire successful M1 training run (step=8000, zero NaN
+        # events) its checkpoint: the ephemeral Kaggle session ended with
+        # nothing on disk to evaluate. Always save once more on normal
+        # completion, regardless of whether the last step already aligned
+        # with the interval (a redundant identical write here is cheap;
+        # losing the only copy of a finished run's weights is not).
+        if checkpoint_manager is not None:
+            checkpoint_manager.save(self.state_dict(), self.step)
+
     def state_dict(self) -> dict:
         return {
             "step": self.step,

@@ -63,8 +63,8 @@
 run:
   run_id: "m1_overfit_5m_full"
   milestone: "M1_smoke_overfit"
-  ticket_hours: 0.3
-  purpose: "Final M1 attempt with both fixes in place (GradScaler growth_interval, dataloader caching) -- real convergence attempt"
+  ticket_hours: 0.1
+  purpose: "Repeat the successful (step=8000, 0 NaN, 219s) training run whose checkpoint was lost to a fit()-completion bug (now fixed)"
   seed: 0
   log_interval: 200
 
@@ -100,8 +100,8 @@ trainer:
 
 checkpoint:
   dir: "/kaggle/working/runs/m1_overfit_5m_full/checkpoints"
-  # With the dataloader fix this run may reach ~100k+ steps; no old
-  # checkpoint is ever pruned (CheckpointManager.save keeps every one), so
-  # a small interval here would produce dozens of ~76MB files. 25000 caps
-  # it at a handful.
-  interval_steps: 25000
+  # total_steps=8000 completes in ~219s at the now-fixed dataloader's real
+  # throughput -- well short of the 25000 the last (checkpoint-losing)
+  # attempt assumed. 4000 gives one mid-run checkpoint plus the
+  # guaranteed-on-completion save (src/train/trainer.py's fit() fix).
+  interval_steps: 4000
