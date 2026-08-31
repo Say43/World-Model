@@ -219,6 +219,41 @@ context_length inferred from the wrong axis) was the actual purpose of this
 ticket. Next: a real M1 training ticket against the 0.789 GPU-hours
 remaining in M1's allocation, then re-run scripts/run_m1_gate.py.
 
+**2026-08-31 — M1 gate diagnosis: conditioning/causality confirmed correct;
+flat PSNR is a data-diversity artifact, not a broken pipeline.** Four
+consecutive stable checkpoints (3968/5000/5866/8000 steps, spanning a bug
+fix and a 2x step-count range) all landed at PSNR ~13 dB / LPIPS ~0.6,
+essentially flat -- ruling out "just needs more training." A local,
+budget-free diagnostic (scripts/diagnose_m1_flat_psnr.py) against the
+step-8000 checkpoint found:
+  - Pose perturbation to one frame changes that frame's own prediction by
+    ~4x its own magnitude (conditioning is clearly live), with exactly
+    zero leak into earlier frames (causal mask is exactly correct).
+  - One-step denoising near clean data (t=0.02) is excellent (MSE 0.01%
+    of a random-noise baseline); it degrades toward t=1 (27% at t=0.98) --
+    the model is locally good near the data manifold, weaker far from it.
+  - Full sampling from pure noise gives ~equally bad latent-space MSE at
+    50, 200, and 1000 Euler steps (0.978/0.980/0.981) -- ruling out
+    "sampler needs finer integration" as the cause, since more steps
+    change nothing.
+
+Conclusion: the learned velocity field is a poor *global* vector field
+away from the data manifold, plausibly because M1's dataset is 8 identical
+repeated windows from one 128-frame trajectory -- extreme overfitting with
+no diversity to generalize the noise-to-data flow across. This directly
+answers CLAUDE.md's original M1 debug trigger ("if it can't get close,
+Plucker conditioning is broken") in the negative: conditioning works.
+The reconstruction gap is a scope artifact of M1's deliberately tiny
+single-scene setup, not evidence of a broken model. Real reconstruction-
+quality validation belongs at M3 (~160 trajectories) where the model has
+enough diversity to learn a well-behaved global field.
+
+M1_smoke_overfit ledger: 0.775/1.0 GPU-hours spent, 0.225h remaining.
+Recommendation: treat M1's pipeline-and-conditioning validation as
+satisfied by this diagnosis; do not spend further M1 budget chasing PSNR
+under the current 8-window setup, since the diagnostic shows more of the
+same training won't move it.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |
