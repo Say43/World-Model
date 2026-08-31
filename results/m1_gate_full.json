@@ -1,0 +1,10 @@
+{
+  "checkpoint_step": 8000,
+  "context_length": 16,
+  "num_sample_steps": 50,
+  "psnr_mean": 13.110740994848474,
+  "psnr_min": 11.496338463219045,
+  "m0_ceiling_psnr": 46.01169080254894,
+  "lpips_mean": 0.6115118823945522,
+  "m0_ceiling_lpips": 0.004280852249430609
+}
