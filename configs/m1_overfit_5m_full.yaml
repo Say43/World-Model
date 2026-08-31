@@ -1,0 +1,68 @@
+# M1 gate (CLAUDE.md): 5M model, one scene, pose-conditioned novel-view
+# overfit. Pass = reconstruction near the M0 AE ceiling (PSNR ~46 dB,
+# LPIPS ~0.0043 -- results/m0_ae_ceiling.json). If it can't get close,
+# Plucker conditioning is broken; debug before proceeding to M2.
+#
+# This is the real M1 training ticket, following the smoke run
+# (m1_overfit_5m.yaml, 0.1 GPU-hours, checkpoint_step=3968) that verified
+# the full pipeline works end to end but was never meant to reach the
+# ceiling: PSNR 13.06 dB / LPIPS 0.60 there (results/m1_gate_smoke.json)
+# reflects ~1% of a GPU-hour's steps, not a broken model.
+#
+# ticket_hours=0.75 uses nearly all of M1's remaining 0.789 GPU-hour
+# allocation (0.211 already spent on the smoke attempts), leaving a small
+# 0.039h buffer rather than dipping into the project reserve. Note this is
+# GPU-hours against the project's internal 20h training-budget ledger, not
+# the much larger ~29h weekly Kaggle account quota -- the two are separate
+# and it's the former that actually constrains this ticket. total_steps is
+# set far above what 0.75 GPU-hours can reach at the measured T4 throughput
+# (~352k steps/GPU-hour for 5M/16-tok/frame, compiled) so the ticket
+# deadline in scripts/train.py is the actual stopping condition, not this
+# number -- consistent with how the smoke run was configured.
+#
+# Data: scripts/preprocess/precompute_dataset.py --tier m1 must have been
+# run first (same data as the smoke run; no need to re-run precompute).
+# Checkpoint dir is fresh (not the smoke run's) -- each Kaggle session's
+# /kaggle/working is ephemeral, so there is nothing to resume from anyway.
+
+run:
+  run_id: "m1_overfit_5m_full"
+  milestone: "M1_smoke_overfit"
+  ticket_hours: 0.75
+  purpose: "Real M1 training run toward the M0 ceiling, following the pipeline-verification smoke run"
+  seed: 0
+  log_interval: 200
+
+data:
+  target: "src.train.dataset.build_dataloader"
+  kwargs:
+    data_dir: "/kaggle/working/nanowm_data/m1"
+    context_length: 16
+    batch_size: 8
+
+model:
+  target: "src.train.model_factory.build_causal_dit"
+  kwargs:
+    preset: "5m"
+    context_length: 16
+
+loss:
+  target: "src.train.losses.rectified_flow_loss"
+
+optim:
+  lr: 0.0003
+  weight_decay: 0.0
+
+trainer:
+  warmup_steps: 500
+  total_steps: 1000000
+  min_lr_ratio: 0.1
+  grad_clip: 1.0
+  ema_decay: 0.99
+  amp: true
+  nan_watchdog_raise: true
+  log_interval: 200
+
+checkpoint:
+  dir: "/kaggle/working/runs/m1_overfit_5m_full/checkpoints"
+  interval_steps: 5000
