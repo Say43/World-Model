@@ -44,12 +44,21 @@
 # run first (same data as the smoke run; no need to re-run precompute).
 # Checkpoint dir is fresh (not the smoke run's) -- each Kaggle session's
 # /kaggle/working is ephemeral, so there is nothing to resume from anyway.
+#
+# ticket_hours cut to 0.15 (down from 0.3): third attempt, after the LR
+# schedule fix (this file, prior version) turned out not to be the real
+# cause -- see src/train/trainer.py's grad_scaler_* fields for the actual
+# fix (GradScaler's default growth_interval=2000 tripling the scale by
+# step ~6000, independent of LR). M1's remaining allocation is down to
+# 0.495 GPU-hours after three diagnostic attempts, so this run is sized
+# to verify the fix actually gets past the known ~step-6000 failure point
+# without spending the rest of the budget on an unverified fix.
 
 run:
   run_id: "m1_overfit_5m_full"
   milestone: "M1_smoke_overfit"
-  ticket_hours: 0.3
-  purpose: "Real M1 training run with a corrected LR schedule (total_steps was miscalibrated in the prior attempt, which diverged)"
+  ticket_hours: 0.15
+  purpose: "Verify the GradScaler growth_interval fix gets past the known ~step-6000 failure point before spending the rest of M1's shrinking budget"
   seed: 0
   log_interval: 200
 
