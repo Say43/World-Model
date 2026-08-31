@@ -45,20 +45,26 @@
 # Checkpoint dir is fresh (not the smoke run's) -- each Kaggle session's
 # /kaggle/working is ephemeral, so there is nothing to resume from anyway.
 #
-# ticket_hours cut to 0.15 (down from 0.3): third attempt, after the LR
-# schedule fix (this file, prior version) turned out not to be the real
-# cause -- see src/train/trainer.py's grad_scaler_* fields for the actual
-# fix (GradScaler's default growth_interval=2000 tripling the scale by
-# step ~6000, independent of LR). M1's remaining allocation is down to
-# 0.495 GPU-hours after three diagnostic attempts, so this run is sized
-# to verify the fix actually gets past the known ~step-6000 failure point
-# without spending the rest of the budget on an unverified fix.
+# Fourth attempt. Third attempt (0.15h ticket) confirmed the GradScaler
+# fix: zero skipped steps, smooth loss through step 5866, cut off by the
+# ticket deadline before reaching the old ~6040-6080 failure zone -- not
+# by a NaN. It also surfaced a second, larger bug: TrajectoryWindowDataset
+# was reloading and decompressing its .npz file from disk on every single
+# __getitem__ call instead of caching it, making real training ~9x slower
+# than the synthetic profile (~11 steps/s vs ~98 steps/s). Fixed in
+# src/train/dataset.py. With that fix, 0.3 GPU-hours should reach close to
+# the ~105,675 steps the synthetic profile implies, comfortably clearing
+# the old failure point and reaching real convergence, not just verifying
+# stability.
+#
+# ticket_hours=0.3 uses most of M1's remaining 0.344 GPU-hour allocation
+# (0.656 spent across three prior attempts), leaving a small buffer.
 
 run:
   run_id: "m1_overfit_5m_full"
   milestone: "M1_smoke_overfit"
-  ticket_hours: 0.15
-  purpose: "Verify the GradScaler growth_interval fix gets past the known ~step-6000 failure point before spending the rest of M1's shrinking budget"
+  ticket_hours: 0.3
+  purpose: "Final M1 attempt with both fixes in place (GradScaler growth_interval, dataloader caching) -- real convergence attempt"
   seed: 0
   log_interval: 200
 
@@ -94,4 +100,8 @@ trainer:
 
 checkpoint:
   dir: "/kaggle/working/runs/m1_overfit_5m_full/checkpoints"
-  interval_steps: 2000
+  # With the dataloader fix this run may reach ~100k+ steps; no old
+  # checkpoint is ever pruned (CheckpointManager.save keeps every one), so
+  # a small interval here would produce dozens of ~76MB files. 25000 caps
+  # it at a handful.
+  interval_steps: 25000
