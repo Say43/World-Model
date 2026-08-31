@@ -4,6 +4,8 @@ elsewhere; this one exists because the M1 config wires them together via
 dotted-path strings (scripts/train.py's target contract), where a mismatch
 would only surface at the moment a real Kaggle run tries to start.
 """
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 import torch
@@ -36,6 +38,33 @@ def test_dataset_produces_expected_number_of_windows(tmp_path):
     assert item["latents"].shape == (16, 16, 128)
     assert item["poses"].shape == (16, 4, 4)
     assert item["intrinsics"].shape == (16, 4)
+
+
+def test_dataset_loads_each_file_from_disk_only_once(tmp_path):
+    """Regression test: __getitem__ originally called np.load() on every
+    access -- decompressing the same savez_compressed file from disk on
+    every single training step, for every item in the batch. Measured on
+    Kaggle: real training throughput was ~11 steps/s against a ~98 steps/s
+    synthetic profile of the identical model/batch config
+    (results/profile_2xt4_v2.json used in-memory tensors, no file I/O) --
+    an ~9x gap consistent with paying decompression on every fetch instead
+    of caching once. Two trajectories, four windows each: np.load must be
+    called exactly twice (once per file, at construction), never per-item.
+    """
+    _write_fake_trajectory(tmp_path / "a.npz", length=32)
+    _write_fake_trajectory(tmp_path / "b.npz", length=32)
+
+    real_load = np.load
+    with patch("numpy.load", side_effect=real_load) as mock_load:
+        ds = TrajectoryWindowDataset(str(tmp_path), context_length=16, stride=16)
+        assert mock_load.call_count == 2  # once per file, during __init__
+
+        for i in range(len(ds)):
+            ds[i]
+        for i in range(len(ds)):  # a second full pass, as a real epoch would do
+            ds[i]
+
+    assert mock_load.call_count == 2, "np.load must not be called again from __getitem__"
 
 
 def test_full_pipeline_backward_pass(tmp_path):

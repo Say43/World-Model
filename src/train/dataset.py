@@ -25,14 +25,33 @@ class TrajectoryWindowDataset(Dataset):
     def __init__(self, data_dir: str, context_length: int, stride: int = None):
         self.context_length = context_length
         self.stride = stride or context_length
-        self._index: List[tuple] = []  # (npz_path, window_start)
+        self._index: List[tuple] = []  # (traj_key, window_start)
+        # Every trajectory's arrays are decompressed into memory once, here,
+        # rather than in __getitem__. The first version of this class called
+        # np.load() (on a savez_compressed file, so real zlib decompression,
+        # not just a cheap mmap) inside __getitem__ -- once per item, every
+        # batch, every step. Measured on Kaggle: real training reached
+        # ~11 steps/s against a ~98 steps/s synthetic profile
+        # (results/profile_2xt4_v2.json, same model/batch/tokens-per-frame,
+        # in-memory random tensors) -- an ~9x gap consistent with paying
+        # disk I/O + decompression on every single item fetch instead of
+        # once. M1's tier is tiny (887KB total) and fits trivially in
+        # memory; M3/M4's tiers (CLAUDE.md's ~160-trajectory estimate) are
+        # still small enough to cache whole.
+        self._cache: dict = {}
         paths = sorted(Path(data_dir).glob("*.npz"))
         if not paths:
             raise FileNotFoundError(f"no .npz trajectories found in {data_dir}")
         for path in paths:
             with np.load(path) as data:
-                length = data["latents"].shape[0]
+                self._cache[path] = {
+                    "latents": data["latents"].astype(np.float32),
+                    "poses": data["poses"].astype(np.float32),
+                    "intrinsics": data["intrinsics"].astype(np.float32),
+                }
+            length = self._cache[path]["latents"].shape[0]
             if length < context_length:
+                del self._cache[path]
                 continue  # too short to fill one window; skip rather than pad
             for start in range(0, length - context_length + 1, self.stride):
                 self._index.append((path, start))
@@ -47,14 +66,12 @@ class TrajectoryWindowDataset(Dataset):
     def __getitem__(self, idx: int):
         path, start = self._index[idx]
         end = start + self.context_length
-        with np.load(path) as data:
-            latents = data["latents"][start:end]
-            poses = data["poses"][start:end]
-            intrinsics = data["intrinsics"]
+        cached = self._cache[path]
+        intrinsics = cached["intrinsics"]
         return {
-            "latents": torch.from_numpy(latents.astype(np.float32)),
-            "poses": torch.from_numpy(poses.astype(np.float32)),
-            "intrinsics": torch.from_numpy(np.broadcast_to(intrinsics, (self.context_length, 4)).astype(np.float32)),
+            "latents": torch.from_numpy(cached["latents"][start:end].copy()),
+            "poses": torch.from_numpy(cached["poses"][start:end].copy()),
+            "intrinsics": torch.from_numpy(np.broadcast_to(intrinsics, (self.context_length, 4)).copy()),
         }
 
 
