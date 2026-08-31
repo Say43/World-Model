@@ -9,16 +9,36 @@
 # ceiling: PSNR 13.06 dB / LPIPS 0.60 there (results/m1_gate_smoke.json)
 # reflects ~1% of a GPU-hour's steps, not a broken model.
 #
-# ticket_hours=0.75 uses nearly all of M1's remaining 0.789 GPU-hour
-# allocation (0.211 already spent on the smoke attempts), leaving a small
-# 0.039h buffer rather than dipping into the project reserve. Note this is
-# GPU-hours against the project's internal 20h training-budget ledger, not
-# the much larger ~29h weekly Kaggle account quota -- the two are separate
-# and it's the former that actually constrains this ticket. total_steps is
-# set far above what 0.75 GPU-hours can reach at the measured T4 throughput
-# (~352k steps/GPU-hour for 5M/16-tok/frame, compiled) so the ticket
-# deadline in scripts/train.py is the actual stopping condition, not this
-# number -- consistent with how the smoke run was configured.
+# ticket_hours=0.3, leaving 0.342 of M1's remaining 0.642 GPU-hour
+# allocation as reserve after two smoke attempts (0.211h) and one failed
+# full attempt (0.147h, aborted by the NaN watchdog at step 6080). Note
+# this is GPU-hours against the project's internal 20h training-budget
+# ledger, not the much larger ~29h weekly Kaggle account quota -- the two
+# are separate and it's the former that actually constrains this ticket.
+#
+# total_steps was originally set to 1,000,000 so the ticket deadline alone
+# would stop the run -- this was wrong and caused the prior attempt's
+# failure. WarmupScheduler's cosine decay is shaped by total_steps, not by
+# how long the ticket allows the run to go: at 1,000,000 steps, the LR
+# was still ~99.9% of peak by step 6080, and the run diverged into an inf
+# gradient shortly after.
+#
+# First fix attempt was total_steps=100,000 (calibrated to what 0.3
+# GPU-hours can reach at the measured T4 throughput), but checking it
+# against the failure point caught that it doesn't actually help: at step
+# 6080 the LR would STILL be at 99.4% of peak (progress through an
+# 100,000-step schedule is barely underway that early). The two smoke
+# attempts, by contrast, never diverged in the same step range because
+# their total_steps=5000 schedule had already decayed to ~19.5% of peak by
+# step 3968, the point they were cut off at ticket expiry.
+#
+# Calibrated instead against that evidence: total_steps=8000,
+# warmup_steps=200 puts the LR at ~22.8% of peak by step 6080 -- matching
+# the decay level the smoke schedule had reached when it stayed stable,
+# rather than a throughput estimate that ignores where the model actually
+# broke last time. The schedule fully decays to its min_lr_ratio floor by
+# step 8000, well before the ~105,675 steps 0.3 GPU-hours can reach, so
+# the remaining budget trains at low, stable LR rather than idling.
 #
 # Data: scripts/preprocess/precompute_dataset.py --tier m1 must have been
 # run first (same data as the smoke run; no need to re-run precompute).
@@ -28,8 +48,8 @@
 run:
   run_id: "m1_overfit_5m_full"
   milestone: "M1_smoke_overfit"
-  ticket_hours: 0.75
-  purpose: "Real M1 training run toward the M0 ceiling, following the pipeline-verification smoke run"
+  ticket_hours: 0.3
+  purpose: "Real M1 training run with a corrected LR schedule (total_steps was miscalibrated in the prior attempt, which diverged)"
   seed: 0
   log_interval: 200
 
@@ -54,8 +74,8 @@ optim:
   weight_decay: 0.0
 
 trainer:
-  warmup_steps: 500
-  total_steps: 1000000
+  warmup_steps: 200
+  total_steps: 8000
   min_lr_ratio: 0.1
   grad_clip: 1.0
   ema_decay: 0.99
@@ -65,4 +85,4 @@ trainer:
 
 checkpoint:
   dir: "/kaggle/working/runs/m1_overfit_5m_full/checkpoints"
-  interval_steps: 5000
+  interval_steps: 2000
