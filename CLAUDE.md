@@ -274,6 +274,26 @@ from its measured compiled step times, then request explicit user approval.
 The sweep uses M3-tier data because M1's eight repeated windows already failed
 to learn a useful global flow field and cannot support a meaningful LR rank.
 
+**2026-09-04 — M2 capped T4 profile measured** (results/m2_profile.json).
+Real Kaggle numbers for the same-depth pair, compiled, zero divergence:
+
+| preset | dim | params | step time | steps/GPU-h |
+|---|---|---|---|---|
+| m2_proxy_5m | 192 | 5.33M | 15.8 ms | 228,571 |
+| 15m (heads=8) | 320 | 14.80M | 27.7 ms | 130,105 |
+
+10-arm sweep (5 LRs x 2 presets, 3000 steps) at these rates: 0.181 GPU-h on
+synthetic in-memory batches. Real dataloading adds overhead not captured
+here (M1's real throughput was measurably below its own synthetic profile
+before the dataset-caching fix); ticket approved at 0.5 GPU-h, ~2.8x the
+synthetic estimate, against M2's untouched 3.0h allocation.
+
+Approved and launched: M3-tier precompute (160 trajectories, inference-side,
+weekly quota not training budget) followed by the sweep itself in one
+combined Kaggle session, ticket_hours=0.5 set only in the bundled config for
+that run -- the checked-in configs/m2_mup_lr_sweep.yaml stays at
+`ticket_hours: null` per tests/test_m2_lr_sweep.py's guard.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |
