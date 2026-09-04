@@ -1,0 +1,149 @@
+{
+  "config": {
+    "data": {
+      "batch_size": 8,
+      "context_length": 16,
+      "data_dir": "/kaggle/working/nanowm_data/m3"
+    },
+    "output": {
+      "path": "/kaggle/working/m2_lr_sweep.json"
+    },
+    "run": {
+      "milestone": "M2_hp_transfer_5M",
+      "purpose": "Tune base LR on the same-depth 5M muP proxy and verify width-only transfer to 15M",
+      "run_id": "m2_mup_lr_sweep",
+      "seed": 0,
+      "ticket_hours": 0.5
+    },
+    "runtime": {
+      "compile": true,
+      "device": "cuda"
+    },
+    "sweep": {
+      "base_dim": 192,
+      "lrs": [
+        0.0001,
+        0.0003,
+        0.001,
+        0.003,
+        0.01
+      ],
+      "num_heads": 8,
+      "presets": [
+        "m2_proxy_5m",
+        "15m"
+      ],
+      "steps": 3000,
+      "trailing_window": 200
+    }
+  },
+  "git_sha": "unknown",
+  "results": [
+    {
+      "preset": "m2_proxy_5m",
+      "base_lr": 0.0001,
+      "steps_completed": 3000,
+      "diverged_at_step": 640,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.5908995069563389,
+      "final_loss": 0.5293188095092773,
+      "wall_seconds": 138.957435131073
+    },
+    {
+      "preset": "m2_proxy_5m",
+      "base_lr": 0.0003,
+      "steps_completed": 3000,
+      "diverged_at_step": null,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.49696330338716505,
+      "final_loss": 0.44534605741500854,
+      "wall_seconds": 96.26830959320068
+    },
+    {
+      "preset": "m2_proxy_5m",
+      "base_lr": 0.001,
+      "steps_completed": 3000,
+      "diverged_at_step": null,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.4422110448777676,
+      "final_loss": 0.40063875913619995,
+      "wall_seconds": 96.95626306533813
+    },
+    {
+      "preset": "m2_proxy_5m",
+      "base_lr": 0.003,
+      "steps_completed": 3000,
+      "diverged_at_step": null,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.42245895832777025,
+      "final_loss": 0.38327279686927795,
+      "wall_seconds": 96.6616587638855
+    },
+    {
+      "preset": "m2_proxy_5m",
+      "base_lr": 0.01,
+      "steps_completed": 3000,
+      "diverged_at_step": null,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.42769797772169116,
+      "final_loss": 0.3887583911418915,
+      "wall_seconds": 96.37736225128174
+    },
+    {
+      "preset": "15m",
+      "base_lr": 0.0001,
+      "steps_completed": 3000,
+      "diverged_at_step": 607,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.5646074755489826,
+      "final_loss": 0.5042266249656677,
+      "wall_seconds": 209.73095178604126
+    },
+    {
+      "preset": "15m",
+      "base_lr": 0.0003,
+      "steps_completed": 3000,
+      "diverged_at_step": null,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.4784239022433758,
+      "final_loss": 0.43084466457366943,
+      "wall_seconds": 173.64779043197632
+    },
+    {
+      "preset": "15m",
+      "base_lr": 0.001,
+      "steps_completed": 3000,
+      "diverged_at_step": null,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.41903343588113784,
+      "final_loss": 0.38137805461883545,
+      "wall_seconds": 173.8337047100067
+    },
+    {
+      "preset": "15m",
+      "base_lr": 0.003,
+      "steps_completed": 3000,
+      "diverged_at_step": null,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.3952604083716869,
+      "final_loss": 0.3607863485813141,
+      "wall_seconds": 173.57664322853088
+    },
+    {
+      "preset": "15m",
+      "base_lr": 0.01,
+      "steps_completed": 3000,
+      "diverged_at_step": null,
+      "deadline_reached": false,
+      "trailing_avg_loss": 0.39163401767611505,
+      "final_loss": 0.3564203381538391,
+      "wall_seconds": 175.30083513259888
+    }
+  ],
+  "best_lr": {
+    "m2_proxy_5m": 0.003,
+    "15m": 0.01
+  },
+  "total_wall_seconds": 1431.3437948226929,
+  "complete": true
+}

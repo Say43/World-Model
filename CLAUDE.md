@@ -294,6 +294,34 @@ combined Kaggle session, ticket_hours=0.5 set only in the bundled config for
 that run -- the checked-in configs/m2_mup_lr_sweep.yaml stays at
 `ticket_hours: null` per tests/test_m2_lr_sweep.py's guard.
 
+**2026-09-04 — M2 sweep result: ambiguous, not a clean pass or fail**
+(results/m2_lr_sweep.json). All 10 arms completed within the 0.398h of the
+0.5h ticket used (M2 now at 1.172/3.0h with this and the profile run).
+
+| preset | best lr | loss | runner-up lr | runner-up loss |
+|---|---|---|---|---|
+| m2_proxy_5m (dim=192) | 0.003 | 0.4225 | 0.01 | 0.4277 (+1.2%) |
+| 15m (dim=320, heads=8) | 0.01 | 0.3916 | 0.003 | 0.3953 (+0.8%) |
+
+Discrete-grid optimal-LR ratio: 0.01/0.003 = 3.33, against muP's ~1.0
+prediction -- on its face a fail of CLAUDE.md's M2 gate ("optimale LR bei
+5M und 15M liegen im erwarteten Verhältnis"). But the two candidates are
+one step apart on a coarse 5-point log-spaced grid (1e-4/3e-4/1e-3/3e-3/1e-2,
+~3.16x per step), and the loss difference between each width's top two
+candidates is under 1.5% -- the landscape is flat enough near the optimum
+that a single-seed, 5-point sweep cannot distinguish "muP transfers
+correctly with sampling noise picking adjacent grid points" from "muP's
+transfer genuinely fails by a few x." The project's own M3 methodology
+(CLAUDE.md work rules) treats single-seed comparisons as anecdotal for
+exactly this reason; this sweep is single-seed.
+Both widths' lr=1e-4 arm diverged around step 600-640 -- symmetric across
+widths, more likely a general low-LR/warmup instability than a
+width-specific muP failure.
+Not yet resolved. A confident verdict needs a tighter grid around
+3e-3-1e-2 and >=2 seeds per arm before concluding muP is or isn't
+correctly implemented -- both would cost additional M2 budget (2.602h
+remain) and need user sign-off before another ticket.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |
