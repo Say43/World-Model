@@ -146,6 +146,18 @@ def main(argv=None) -> int:
     try:
         model = build_model(cfg)
         model = wrap_model(model, ddp_ctx)
+        # Optimizer param groups are built from the model BEFORE
+        # torch.compile wraps it, same reasoning as src/train/utils.py's
+        # unwrap_compiled: torch.compile's OptimizedModule previously
+        # dropped/misshaped a bare top-level nn.Parameter in .state_dict()
+        # (frame_pos_embed -- see CLAUDE.md's decision log), so anything
+        # that inspects named_parameters() on a compiled model is not
+        # trusted here even though .parameters() iteration specifically
+        # hasn't shown that bug. The parameter tensor objects are identical
+        # before and after compiling (compile wraps the module, it doesn't
+        # replace its parameters), so gradients from the compiled forward/
+        # backward still land on these exact objects.
+        raw_model_for_optim = model
         # Measured on 2xT4 (CLAUDE.md "Measured on 2x Tesla T4"): compile
         # gives 1.2x-2.6x, not the 10-25% the pre-hardware estimate assumed,
         # and cuts peak VRAM by up to 40%. It compiled cleanly in every
@@ -159,11 +171,25 @@ def main(argv=None) -> int:
                 print("torch.compile: enabled")
             except Exception as exc:  # noqa: BLE001
                 print(f"torch.compile failed, continuing eager: {exc!r}", file=sys.stderr)
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=cfg["optim"]["lr"],
-            weight_decay=cfg["optim"].get("weight_decay", 0.0),
-        )
+
+        mup_cfg = cfg.get("mup")
+        if mup_cfg:
+            from src.train.mup import build_mup_optimizer
+            optimizer = build_mup_optimizer(
+                raw_model_for_optim,
+                raw_model_for_optim.config,
+                base_dim=mup_cfg["base_dim"],
+                base_lr=cfg["optim"]["lr"],
+                weight_decay=cfg["optim"].get("weight_decay", 0.0),
+            )
+            print(f"muP optimizer: base_dim={mup_cfg['base_dim']}, "
+                  f"width_mult={raw_model_for_optim.config.dim / mup_cfg['base_dim']:.3f}")
+        else:
+            optimizer = torch.optim.AdamW(
+                raw_model_for_optim.parameters(),
+                lr=cfg["optim"]["lr"],
+                weight_decay=cfg["optim"].get("weight_decay", 0.0),
+            )
         loss_fn = _import_target(cfg["loss"]["target"])
         trainer_config = TrainerConfig.from_dict(cfg["trainer"])
         trainer = Trainer(model, optimizer, loss_fn, trainer_config, device=ddp_ctx.device)

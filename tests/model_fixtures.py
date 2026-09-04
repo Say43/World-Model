@@ -62,3 +62,43 @@ def break_zero_init(model: CausalDiT, seed: int = 123) -> CausalDiT:
             with torch.no_grad():
                 p.copy_(torch.randn(p.shape, generator=g) * 0.02)
     return model
+
+
+class _RandomBatchDataset(torch.utils.data.Dataset):
+    """Wraps random_batch's tuple output as dict batches, matching
+    src/train/losses.py's rectified_flow_loss contract -- for CPU
+    integration tests of scripts/train.py that need a real dataloader
+    target without precomputed .npz trajectory files on disk.
+    """
+
+    def __init__(self, config: DiTConfig, size: int, seed: int = 0):
+        self.config = config
+        self.size = size
+        self.seed = seed
+
+    def __len__(self) -> int:
+        return self.size
+
+    def __getitem__(self, idx: int):
+        latents, poses, intrinsics, _ = random_batch(self.config, batch_size=1, seed=self.seed + idx)
+        return {"latents": latents[0], "poses": poses[0], "intrinsics": intrinsics[0]}
+
+
+def random_batch_dataloader(preset: str, batch_size: int, size: int, seed: int = 0,
+                             context_length: int = 16):
+    """`data.target` for a scripts/train.py config that needs a real
+    dataloader but has no precomputed trajectory data -- e.g. a wiring
+    test for something orthogonal to the data pipeline (src/train/mup.py).
+
+    Builds its config via src.train.model_factory.build_causal_dit's own
+    config-construction path (not a bare preset_*() call) so the latent
+    shape here matches what that factory's model actually expects --
+    build_causal_dit overrides tokens_per_frame/latent_channels/
+    raymap_resolution to the M0-chosen AE's shape, which the raw presets'
+    own defaults do not match.
+    """
+    from src.train.model_factory import build_causal_dit
+
+    config = build_causal_dit(preset, context_length=context_length).config
+    dataset = _RandomBatchDataset(config, size=size, seed=seed)
+    return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False, drop_last=True)
