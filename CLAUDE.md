@@ -322,6 +322,17 @@ Not yet resolved. A confident verdict needs a tighter grid around
 correctly implemented -- both would cost additional M2 budget (2.602h
 remain) and need user sign-off before another ticket.
 
+**User decision (2026-09-04): M2 gate treated as passed.** Loss gap
+between each width's top two LR candidates is under 1.5%, judged close
+enough in practice to count as transfer working, rather than spending
+more of M2's budget on a tighter-grid/multi-seed follow-up to settle the
+ambiguity precisely. M2_hp_transfer_5M closed at 1.172/3.0h spent, 2.602h
+left unused. Proceeding to M3 (ablations at 15M).
+Caveat carried forward: this was a practical call under a real ambiguity,
+not a clean statistical pass -- if M3/M4 training behaves oddly across
+model sizes in a way that looks LR-sensitive, revisit this entry before
+assuming muP's width-transfer is solid.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |
