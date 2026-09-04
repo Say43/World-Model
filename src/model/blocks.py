@@ -134,6 +134,9 @@ class Attention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
         self.attn_dropout = attn_dropout
+        # Set by src.train.mup.configure_mup_model. None preserves ordinary
+        # PyTorch 1/sqrt(d_head) scaling for non-muP runs.
+        self.mup_attention_scale = None
 
         self.qkv = nn.Linear(dim, 3 * dim, bias=bias)
         self.proj = nn.Linear(dim, dim, bias=bias)
@@ -171,7 +174,12 @@ class Attention(nn.Module):
             k, v = kv_cache.append(layer_idx, k, v)
 
         out = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=attn_mask, dropout_p=self.attn_dropout if self.training else 0.0
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
+            dropout_p=self.attn_dropout if self.training else 0.0,
+            scale=self.mup_attention_scale,
         )
         out = out.transpose(1, 2).contiguous().view(x.shape[0], x.shape[1], self.dim)
         return self.proj(out)

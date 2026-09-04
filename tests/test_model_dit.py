@@ -8,6 +8,7 @@ from src.model.dit import (
     build_block_causal_mask,
     count_parameters,
     preset_5m,
+    preset_m2_proxy_5m,
     preset_15m,
     preset_40m,
 )
@@ -102,6 +103,7 @@ def test_build_block_causal_mask_with_cache():
     "preset_fn,expected",
     [
         (preset_5m, 4_720_324),
+        (preset_m2_proxy_5m, 5_286_196),
         (preset_15m, 14_718_628),
         (preset_40m, 40_624_644),
     ],

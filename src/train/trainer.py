@@ -125,34 +125,60 @@ class Trainer:
         event = check_finite(loss, self.step, "loss")
         grad_norm_value = float("nan")
         skip_step = False
+        unscale_called = False
 
         if event is None:
             self.scaler.scale(loss).backward()
             self.scaler.unscale_(self.optimizer)
+            unscale_called = True
             grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.grad_clip)
             grad_norm_value = float(grad_norm)
             event = check_finite(grad_norm, self.step, "grad")
 
         if event is not None:
             self._report_nan(event)
-            self.optimizer.zero_grad(set_to_none=True)
             skip_step = True
+            if not unscale_called:
+                # Loss-level NaN: backward() never ran, so there is nothing
+                # for the scaler to clean up. Clear any stale grads before
+                # the next step.
+                self.optimizer.zero_grad(set_to_none=True)
             if self.config.nan_watchdog_raise:
                 raise NaNDetected(event)
 
-        if not skip_step:
-            # GradScaler can still veto the step internally: if it found
-            # inf/nan while unscaling it silently no-ops `step` and lowers the
-            # scale in `update`. Our own checks above catch nearly all of that
-            # (a non-finite grad makes clip_grad_norm_ non-finite), but the
-            # scaler is the authority on its own decision, so ask it rather
-            # than assume. A drop in scale means the step did not happen --
-            # without this the run would count a skipped step as a real one
-            # and the loss curve would quietly stall.
+        if unscale_called:
+            # Once unscale_() has been called, GradScaler requires step()+
+            # update() before the *next* unscale_() call, or it raises
+            # "unscale_() has already been called" on that next call --
+            # regardless of whether *we* want to apply this step. GradScaler
+            # tracks its own inf/nan finding internally from unscale_ and
+            # step() auto-no-ops the optimizer update when it found one. We
+            # therefore finalize a bad unscaled step only for an *enabled*
+            # scaler; the disabled CPU pass-through needs no finalization.
+            #
+            # A prior version only called step()/update() inside
+            # `if not skip_step`, skipping both whenever our own grad-level
+            # check_finite already caught the problem -- leaving the scaler
+            # mid-protocol and crashing the *next* step's unscale_() call.
+            # nan_watchdog_raise=True (every M1 run) never exercised this,
+            # since it raises immediately and never reaches a next step;
+            # only nan_watchdog_raise=False (the M2 LR sweep, which must
+            # survive a divergent LR without crashing the rest of the
+            # sweep) found it.
             scale_before = self.scaler.get_scale() if self.amp_enabled else None
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            if scale_before is not None and self.scaler.get_scale() < scale_before:
+            # A disabled GradScaler is a transparent pass-through: step()
+            # would apply even non-finite gradients. Only AMP's enabled
+            # scaler can safely finalize an already-unscaled bad step, since
+            # it recorded found_inf and will turn step() into a no-op.
+            if not skip_step or self.amp_enabled:
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            scaler_skipped = scale_before is not None and self.scaler.get_scale() < scale_before
+            if scaler_skipped and not skip_step:
+                # Our own checks passed, but GradScaler itself found
+                # something bad during unscale_ that we missed (belt and
+                # suspenders -- see the comment above the original version
+                # of this check for why the scaler is treated as authoritative).
                 event = NaNEvent(
                     step=self.step,
                     kind="grad",
@@ -165,9 +191,12 @@ class Trainer:
                 skip_step = True
                 if self.config.nan_watchdog_raise:
                     raise NaNDetected(event)
-            else:
+
+            if not skip_step and not scaler_skipped:
                 self.scheduler.step()
                 self.ema.update(unwrap_compiled(self.model))
+            else:
+                self.optimizer.zero_grad(set_to_none=True)
 
         loss_detached = loss.detach()
         loss_value = float(loss_detached.item()) if torch.isfinite(loss_detached).all() else float("nan")

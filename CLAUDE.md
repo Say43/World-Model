@@ -254,6 +254,26 @@ satisfied by this diagnosis; do not spend further M1 budget chasing PSNR
 under the current 8-window setup, since the diagnostic shows more of the
 same training won't move it.
 
+**2026-09-04 — M2 implementation audit: no M2 GPU budget spent yet.** The
+first local muP draft was stopped before Kaggle because it was not a
+source-equivalent muTransfer setup. It compared the ordinary 5M/15M presets
+while changing depth (5 -> 11) and head count (8 -> 10), omitted fused QKV
+weights (`3*dim`) from LR scaling, scaled the readout LR instead of its
+forward pass, and retained ordinary `1/sqrt(d_head)` attention. The upstream
+reference requires base/target topology to stay equal apart from widths,
+MuReadout's `1/width` forward multiplier, `1/d_head`-family Transformer
+attention, and Adam LR scaling from exact base/target fan-in shapes:
+https://github.com/microsoft/mup
+
+The corrected M2 pair is `m2_proxy_5m` (dim=192, depth=11, heads=8) versus
+`15m` overridden to heads=8 (dim=320, depth=11). Parameter groups now compare
+actual proxy/target shapes, so rounded SwiGLU widths and fused projections get
+their exact fan-in multipliers. `configs/m2_mup_lr_sweep.yaml` remains locked
+with `ticket_hours: null`. Run the capped T4 profile first, calculate a ticket
+from its measured compiled step times, then request explicit user approval.
+The sweep uses M3-tier data because M1's eight repeated windows already failed
+to learn a useful global flow field and cannot support a meaningful LR rank.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |

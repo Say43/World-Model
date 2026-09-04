@@ -35,7 +35,7 @@ if str(ROOT) not in sys.path:
 from src.train.checkpoint import CheckpointManager, SigtermInterrupt
 from src.train.ddp import cleanup_ddp, is_main_process, setup_ddp, wrap_model
 from src.train.trainer import Trainer, TrainerConfig
-from src.train.utils import seed_everything
+from src.train.utils import seed_everything, unwrap_compiled
 
 BUDGET_SCRIPT = ROOT / "scripts" / "budget.py"
 
@@ -157,7 +157,7 @@ def main(argv=None) -> int:
         # before and after compiling (compile wraps the module, it doesn't
         # replace its parameters), so gradients from the compiled forward/
         # backward still land on these exact objects.
-        raw_model_for_optim = model
+        raw_model_for_optim = unwrap_compiled(model)
         # Measured on 2xT4 (CLAUDE.md "Measured on 2x Tesla T4"): compile
         # gives 1.2x-2.6x, not the 10-25% the pre-hardware estimate assumed,
         # and cuts peak VRAM by up to 40%. It compiled cleanly in every

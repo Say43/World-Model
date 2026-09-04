@@ -54,7 +54,7 @@ def restore_rng_state(state: dict) -> None:
 
 
 def unwrap_compiled(model):
-    """Return the original nn.Module underneath a torch.compile wrapper.
+    """Return the original nn.Module underneath compile and DDP wrappers.
 
     Checkpoints must always be built from the uncompiled module: whether a
     model happens to be compiled is a runtime performance decision (the
@@ -68,4 +68,8 @@ def unwrap_compiled(model):
     individually, this is applied once at the point state_dict()/
     load_state_dict() touch the model.
     """
-    return getattr(model, "_orig_mod", model)
+    while hasattr(model, "_orig_mod"):
+        model = model._orig_mod
+    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+        model = model.module
+    return model

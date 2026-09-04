@@ -1,150 +1,202 @@
-"""muP (maximal update parametrization) for CausalDiT, via per-parameter-
-group learning-rate scaling under Adam -- not the `mup` package, to keep
-the project dependency-light, matching how the rest of src/train/ already
-implements its own LR schedule rather than pulling in a scheduler library.
+"""CausalDiT-specific maximal-update parametrization (muP).
 
-Why no init changes are needed: muP's two ingredients are (1) width-scaled
-init variance and (2) width-scaled learning rate. CausalDiT's existing
-init is already compatible with (1) by construction:
-  - "hidden" matrices (both fan_in and fan_out scale with `dim`) use
-    PyTorch's default Kaiming-style init, std ~ 1/sqrt(fan_in). Since
-    fan_in itself scales with width, this already shrinks as
-    1/sqrt(width_mult) relative to the base width -- exactly what muP
-    prescribes for hidden layers. No change needed.
-  - "output" matrices (fan_in scales, fan_out fixed -- just output_proj)
-    are zero-initialized already (src/model/dit.py, for fp16-stability
-    reasons unrelated to muP). Zero trivially satisfies "small enough";
-    muP's output-layer init requirement is moot when starting at exactly
-    zero.
-  - "input" matrices (fan_in fixed, fan_out scales) and "base" params
-    (norms, biases, frame_pos_embed) keep standard init; muP prescribes
-    no width-dependent change for these either.
+This implements the subset of ``microsoft/mup`` needed by nanoWM. Base and
+target parameter shapes are compared directly, so fused QKV matrices and
+rounded SwiGLU widths cannot silently fall out of muP scaling. AdamW LR is
+divided by each matrix's exact fan-in multiplier when both dimensions scale;
+linear biases, attention logits, and the final readout follow the reference
+initialization/forward rules as well.
 
-So the only remaining ingredient -- and the only thing this module does --
-is classifying every parameter into one of muP's categories from its shape
-relative to the model's own config, and building AdamW parameter groups
-whose LR is divided by width_mult for "hidden" and "output" params, left
-at base_lr for "input" and "base" params.
-
-CLAUDE.md's M2 gate is the real verification: optimal LR at 5M and 15M
-must land in the ratio muP predicts. tests/test_train_mup.py's coordinate
-check is a much cheaper (CPU, seconds) regression guard that the group
-classification and LR scaling are wired correctly -- it is not a
-substitute for that gate.
+This is intentionally not a general replacement for the upstream package.
+The proxy and target must have identical topology (notably depth and head
+count); only width-shaped dimensions may differ.
 """
 from __future__ import annotations
 
-from typing import Dict, List
+import dataclasses
+import math
+from collections import defaultdict
+from typing import Dict, List, Tuple
 
 import torch
 import torch.nn as nn
 
-from src.model.blocks import hidden_dim_swiglu
+from src.model.blocks import Attention
+from src.model.dit import CausalDiT
 
 
-def _width_scaling_dims(config) -> set:
-    """Every dimension that scales with model width, computed by calling
-    the exact same formulas src/model/dit.py and its submodules use to
-    build these layers -- not guessed from raw integer ratios.
+def _bare_model(model: nn.Module) -> nn.Module:
+    """Remove compile/DDP wrappers without depending on delegated attrs."""
+    while hasattr(model, "_orig_mod"):
+        model = model._orig_mod
+    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+        model = model.module
+    return model
 
-    An earlier version tried to infer "scales with width" from whether a
-    raw shape was a clean integer multiple of `config.dim`. That silently
-    misclassified most of the model: RaymapEncoder's hidden size is
-    `dim // hidden_mult` (a *fraction* of dim, e.g. 128 at dim=256, which
-    is not a multiple of 256), and hidden_dim_swiglu's `multiple_of`
-    rounding (256*4*2/3 = 682.67 -> rounded to 704) makes the SwiGLU MLP's
-    hidden size scale with dim without being a clean ratio of it. Both
-    landed in "base" (no LR scaling at all) instead of their correct
-    category -- silently disabling muP's LR scaling for most of the
-    model's parameters. Computing the exact values instead of guessing
-    fixes this and keeps working if these formulas change, since it calls
-    the same code the model itself does.
+
+def _base_model(config, base_dim: int) -> CausalDiT:
+    if base_dim <= 0:
+        raise ValueError("base_dim must be positive")
+    if base_dim % config.num_heads:
+        raise ValueError(
+            f"base_dim ({base_dim}) must be divisible by fixed num_heads "
+            f"({config.num_heads})"
+        )
+    base_config = dataclasses.replace(config, dim=base_dim)
+    # A shape-only proxy must not advance the training RNG. Diffusion-noise
+    # sequences would otherwise depend on how many proxy parameters were
+    # allocated before the run.
+    with torch.random.fork_rng(devices=[]):
+        return CausalDiT(base_config)
+
+
+def _shape_metadata(model: nn.Module, config, base_dim: int):
+    model = _bare_model(model)
+    base = _base_model(config, base_dim)
+    base_shapes = {name: tuple(param.shape) for name, param in base.named_parameters()}
+    target_names = {name for name, _ in model.named_parameters()}
+    if target_names != set(base_shapes):
+        mismatch = sorted(target_names.symmetric_difference(base_shapes))
+        raise ValueError(f"muP proxy/target topology differs: {mismatch}")
+
+    metadata = {}
+    for name, param in model.named_parameters():
+        target_shape = tuple(param.shape)
+        base_shape = base_shapes[name]
+        if len(target_shape) != len(base_shape):
+            raise ValueError(f"rank differs for {name}: target={target_shape}, base={base_shape}")
+        infinite_dims = tuple(
+            index
+            for index, (target, proxy) in enumerate(zip(target_shape, base_shape))
+            if target != proxy
+        )
+        fanin_mult = 1.0
+        if param.ndim == 2 and len(infinite_dims) == 2:
+            fanin_mult = target_shape[1] / base_shape[1]
+        metadata[name] = {
+            "base_shape": base_shape,
+            "infinite_dims": infinite_dims,
+            "fanin_mult": fanin_mult,
+        }
+    return metadata, base
+
+
+def classify_param(
+    name: str,
+    tensor: torch.Tensor,
+    config,
+    base_shape: Tuple[int, ...],
+) -> str:
+    """Describe a parameter from its target and proxy shapes.
+
+    Adam-like muP scaling itself is based on the number of changing
+    dimensions. Only matrices with two changing dimensions get LR scaling.
+    A readout weight therefore keeps base LR and is scaled in forward.
     """
-    dim = config.dim
-    raymap_hidden = max(dim // config.raymap_hidden_mult, 6)
-    mlp_hidden = hidden_dim_swiglu(dim, config.mlp_mult, config.mlp_multiple_of)
-    return {
-        dim,
-        raymap_hidden,
-        mlp_hidden,
-        2 * dim,  # final_mod: num_chunks=2
-        6 * dim,  # adaln_single: num_chunks=6
-    }
-
-
-def _fixed_dims(config) -> set:
-    """Dimensions that do NOT scale with model width, gathered from the
-    config rather than hardcoded module names -- generalizes to any
-    current or future input/output layer without listing them by name.
-    """
-    dims = {6, config.latent_channels, config.time_embed_dim}  # 6 = Plucker raymap width
-    return {d for d in dims if d and d > 0}
-
-
-def classify_param(name: str, tensor: torch.Tensor, config) -> str:
-    """Returns one of "input", "hidden", "output", "base" for a named
-    parameter, using only its shape and the model's own config -- no
-    hardcoded module-name list, so it does not silently stop working if
-    src/model/dit.py's internals change (as long as _width_scaling_dims
-    is kept in sync with any new width-dependent formula).
-    """
-    if tensor.ndim != 2:
-        # Norms, biases, frame_pos_embed (context_length, dim), adaln's
-        # per-block bias (6*dim,): none of these have the fan-in blowup
-        # that motivates muP's LR scaling. Standard muP treatment: base LR.
+    target_shape = tuple(tensor.shape)
+    if len(target_shape) != len(base_shape):
+        raise ValueError(f"rank differs for {name}: target={target_shape}, base={base_shape}")
+    changed = tuple(
+        index
+        for index, (target, proxy) in enumerate(zip(target_shape, base_shape))
+        if target != proxy
+    )
+    if tensor.ndim != 2 or not name.endswith(".weight"):
         return "base"
-
-    out_features, in_features = tensor.shape
-    width = _width_scaling_dims(config)
-    fixed = _fixed_dims(config) - width  # a dim that coincides with both (only possible at base width) counts as width
-
-    in_is_fixed = in_features in fixed
-    out_is_fixed = out_features in fixed
-    in_is_width = in_features in width
-    out_is_width = out_features in width
-
-    if in_is_fixed and out_is_width:
+    if changed == (0,):
         return "input"
-    if in_is_width and out_is_fixed:
+    if changed == (1,):
         return "output"
-    if in_is_width and out_is_width:
+    if changed == (0, 1):
         return "hidden"
     return "base"
 
 
-def mup_param_groups(model: nn.Module, config, base_dim: int, base_lr: float,
-                      weight_decay: float = 0.0) -> List[Dict]:
-    """Builds AdamW param groups with muP's LR scaling: "hidden" and
-    "output" params get base_lr / width_mult; "input" and "base" params
-    keep base_lr. `base_dim` is the reference width (this project's 5M
-    preset, dim=256) that `base_lr` was tuned at.
-    """
-    width_mult = config.dim / base_dim
-    buckets: Dict[str, list] = {"input": [], "hidden": [], "output": [], "base": []}
+def configure_mup_model(model: nn.Module, config, base_dim: int):
+    """Apply muP initialization/forward rules once and return shape metadata."""
+    model = _bare_model(model)
+    already = getattr(model, "_mup_base_dim", None)
+    if already is not None:
+        if already != base_dim:
+            raise ValueError(f"model already configured for base_dim={already}, got {base_dim}")
+        return model._mup_parameter_metadata
+
+    metadata, base = _shape_metadata(model, config, base_dim)
+    target_modules = dict(model.named_modules())
+    base_modules = dict(base.named_modules())
+    with torch.no_grad():
+        # microsoft/mup's set_base_shapes rescales Linear biases by the
+        # square root of the fan-in multiplier.
+        for module_name, module in target_modules.items():
+            if not isinstance(module, nn.Linear) or module.bias is None:
+                continue
+            if module is model.output_proj:
+                continue  # MuReadout has its own parameter rescaling below.
+            base_module = base_modules[module_name]
+            fanin_mult = module.weight.shape[1] / base_module.weight.shape[1]
+            module.bias.mul_(math.sqrt(fanin_mult))
+
+        # MuReadout rescales parameters and divides the complete output by
+        # width_mult. This project's readout starts at zero, but applying the
+        # rule explicitly avoids relying on that detail.
+        readout_mult = model.output_proj.weight.shape[1] / base.output_proj.weight.shape[1]
+        model.output_proj.weight.mul_(math.sqrt(readout_mult))
+        if model.output_proj.bias is not None:
+            model.output_proj.bias.mul_(math.sqrt(readout_mult))
+
+    base_head_dim = base.config.dim // base.config.num_heads
+    target_head_dim = config.dim // config.num_heads
+    attention_scale = math.sqrt(base_head_dim) / target_head_dim
+    for module in target_modules.values():
+        if isinstance(module, Attention):
+            module.mup_attention_scale = attention_scale
+
+    model.mup_readout_width_mult = readout_mult
+    model._mup_base_dim = base_dim
+    model._mup_parameter_metadata = metadata
+    return metadata
+
+
+def mup_param_groups(
+    model: nn.Module,
+    config,
+    base_dim: int,
+    base_lr: float,
+    weight_decay: float = 0.0,
+) -> List[Dict]:
+    """Build AdamW groups matching ``microsoft/mup``'s MuAdamW rules."""
+    model = _bare_model(model)
+    metadata = configure_mup_model(model, config, base_dim)
+    buckets = defaultdict(list)
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-        buckets[classify_param(name, param, config)].append(param)
+        info = metadata[name]
+        category = classify_param(name, param, config, info["base_shape"])
+        matrix_like = param.ndim == 2 and len(info["infinite_dims"]) == 2
+        width_mult = info["fanin_mult"] if matrix_like else 1.0
+        buckets[(category, width_mult)].append(param)
 
-    scale = {"input": 1.0, "hidden": 1.0 / width_mult, "output": 1.0 / width_mult, "base": 1.0}
     groups = []
-    for category, params in buckets.items():
-        if not params:
-            continue
+    for (category, width_mult), params in buckets.items():
         groups.append({
             "params": params,
-            "lr": base_lr * scale[category],
-            "weight_decay": weight_decay,
-            "mup_category": category,  # informational only; AdamW ignores unknown keys? No -- see build_mup_optimizer
+            "lr": base_lr / width_mult,
+            # Compensate for AdamW multiplying its decoupled decay by LR;
+            # this is the reference MuAdamW default.
+            "weight_decay": weight_decay * width_mult,
+            "mup_category": category,
+            "mup_width_mult": width_mult,
         })
     return groups
 
 
 def build_mup_optimizer(model: nn.Module, config, base_dim: int, base_lr: float,
                          weight_decay: float = 0.0) -> torch.optim.AdamW:
-    """Same as mup_param_groups but strips the informational "mup_category"
-    key before constructing AdamW, which rejects unknown param-group keys.
-    """
+    """Construct AdamW after stripping informational muP group fields."""
     groups = mup_param_groups(model, config, base_dim, base_lr, weight_decay)
-    clean_groups = [{k: v for k, v in g.items() if k != "mup_category"} for g in groups]
+    clean_groups = [
+        {key: value for key, value in group.items() if not key.startswith("mup_")}
+        for group in groups
+    ]
     return torch.optim.AdamW(clean_groups)

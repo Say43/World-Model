@@ -333,7 +333,10 @@ class CausalDiT(nn.Module):
         hnorm = self.final_norm(x)
         shift, scale = self.final_mod(t_embed).chunk(2, dim=-1)
         hnorm = modulate(hnorm, shift.unsqueeze(-2), scale.unsqueeze(-2))
-        return self.output_proj(hnorm)
+        output = self.output_proj(hnorm)
+        # Set by src.train.mup.configure_mup_model. This is MuReadout's
+        # width multiplier; ordinary models retain multiplier 1.
+        return output / getattr(self, "mup_readout_width_mult", 1.0)
 
 
 def count_parameters(model: nn.Module) -> int:
@@ -375,6 +378,8 @@ def count_parameters_by_component(model: "CausalDiT") -> dict:
 #     (blocks: 4,022,080 | patch_embed: 1,280 | raymap_encoder: 33,920 |
 #      frame_pos_embed: 4,096 | time_mlp: 131,584 | adaln_single: 394,752 |
 #      final_norm_mod_and_head: 132,612)
+#   preset_m2_proxy_5m: dim=192, depth=11, heads=8 -> 5,286,196 params
+#     (same topology as the M2 target; width-only muTransfer proxy)
 #   preset_15m: dim=320, depth=11, heads=10 -> 14,718,628 params
 #     (blocks: 13,651,264 | patch_embed: 1,600 | raymap_encoder: 52,640 |
 #      frame_pos_embed: 5,120 | time_mlp: 184,960 | adaln_single: 616,320 |
@@ -394,6 +399,27 @@ def preset_5m(**overrides) -> DiTConfig:
         latent_channels=4,
         dim=256,
         depth=5,
+        num_heads=8,
+        mlp_mult=4.0,
+    )
+    cfg.update(overrides)
+    return DiTConfig(**cfg)
+
+
+def preset_m2_proxy_5m(**overrides) -> DiTConfig:
+    """Width-only proxy for M2's muTransfer gate.
+
+    The ordinary 5M and 15M presets have depths 5 and 11. That comparison
+    mixes a depth change into a method whose guarantee is widthwise only.
+    This proxy therefore shares the 15M target's depth and fixed head count.
+    """
+    cfg = dict(
+        context_length=16,
+        tokens_per_frame=64,
+        raymap_resolution=(8, 8),
+        latent_channels=4,
+        dim=192,
+        depth=11,
         num_heads=8,
         mlp_mult=4.0,
     )

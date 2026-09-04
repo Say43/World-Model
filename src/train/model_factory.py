@@ -10,9 +10,14 @@ overridden here rather than left to preset defaults.
 from __future__ import annotations
 
 from src.eval.chosen_ae import LATENT_CHANNELS, LATENT_GRID, TOKENS_PER_FRAME
-from src.model.dit import CausalDiT, preset_5m, preset_15m, preset_40m
+from src.model.dit import CausalDiT, preset_5m, preset_m2_proxy_5m, preset_15m, preset_40m
 
-_PRESETS = {"5m": preset_5m, "15m": preset_15m, "40m": preset_40m}
+_PRESETS = {
+    "5m": preset_5m,
+    "m2_proxy_5m": preset_m2_proxy_5m,
+    "15m": preset_15m,
+    "40m": preset_40m,
+}
 
 
 def build_causal_dit(preset: str = "5m", **overrides) -> CausalDiT:

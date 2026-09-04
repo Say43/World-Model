@@ -26,9 +26,22 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.model.dit import CausalDiT, preset_5m, preset_15m, preset_40m  # noqa: E402
+from src.model.dit import (  # noqa: E402
+    CausalDiT,
+    preset_5m,
+    preset_m2_proxy_5m,
+    preset_15m,
+    preset_40m,
+)
+from src.eval.chosen_ae import LATENT_CHANNELS  # noqa: E402
+from src.train.mup import build_mup_optimizer  # noqa: E402
 
-PRESETS = {"5m": preset_5m, "15m": preset_15m, "40m": preset_40m}
+PRESETS = {
+    "5m": preset_5m,
+    "m2_proxy_5m": preset_m2_proxy_5m,
+    "15m": preset_15m,
+    "40m": preset_40m,
+}
 # T4 fp16 peak with tensor cores. Reported alongside MFU so the assumption is
 # visible rather than baked into a single number.
 T4_FP16_PEAK_TFLOPS = 65.0
@@ -53,16 +66,38 @@ def make_batch(cfg, batch_size, device):
     return latents, poses, intrinsics, t
 
 
-def profile_one(preset_name, tokens_per_frame, batch_size, use_compile, steps, warmup, device, time_budget_s):
+def profile_one(
+    preset_name,
+    tokens_per_frame,
+    batch_size,
+    use_compile,
+    steps,
+    warmup,
+    device,
+    time_budget_s,
+    num_heads=None,
+    mup_base_dim=None,
+):
     preset_fn = PRESETS[preset_name]
     side = int(round(tokens_per_frame ** 0.5))
     if side * side != tokens_per_frame:
         raise ValueError(f"tokens_per_frame={tokens_per_frame} is not a perfect square")
-    cfg = preset_fn(tokens_per_frame=tokens_per_frame, raymap_resolution=(side, side))
+    overrides = {
+        "tokens_per_frame": tokens_per_frame,
+        "raymap_resolution": (side, side),
+        "latent_channels": LATENT_CHANNELS,
+    }
+    if num_heads is not None:
+        overrides["num_heads"] = num_heads
+    cfg = preset_fn(**overrides)
 
     model = CausalDiT(cfg).to(device)
     n_params = count_parameters(model)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+    optimizer = (
+        build_mup_optimizer(model, cfg, base_dim=mup_base_dim, base_lr=1e-4)
+        if mup_base_dim is not None
+        else torch.optim.AdamW(model.parameters(), lr=1e-4)
+    )
     scaler = torch.amp.GradScaler(device="cuda", enabled=device.type == "cuda")
 
     compiled = False
@@ -128,6 +163,10 @@ def profile_one(preset_name, tokens_per_frame, batch_size, use_compile, steps, w
         "params": n_params,
         "tokens_per_frame": tokens_per_frame,
         "context_length": cfg.context_length,
+        "dim": cfg.dim,
+        "depth": cfg.depth,
+        "num_heads": cfg.num_heads,
+        "mup_base_dim": mup_base_dim,
         "sequence_length": cfg.context_length * tokens_per_frame,
         "batch_size": batch_size,
         "compile_requested": use_compile,
@@ -170,16 +209,24 @@ def main(argv=None) -> int:
     p.add_argument("--steps", type=int, default=20)
     p.add_argument("--warmup", type=int, default=3)
     p.add_argument("--no-compile", action="store_true", help="skip the torch.compile arm")
+    p.add_argument("--compile-only", action="store_true",
+                   help="profile only the mandatory compiled arm")
     p.add_argument("--time-budget", type=float, default=60.0,
                    help="seconds per configuration before cutting the sweep short")
+    p.add_argument("--num-heads", type=int, default=None,
+                   help="override head count; keep fixed for a width-only muP profile")
+    p.add_argument("--mup-base-dim", type=int, default=None,
+                   help="enable muP with this proxy width")
     p.add_argument("--out", default="runs/profile.json")
     args = p.parse_args(argv)
+    if args.no_compile and args.compile_only:
+        p.error("--no-compile and --compile-only are mutually exclusive")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Profiling on {device}"
           f"{' (' + torch.cuda.get_device_name(0) + ')' if device.type == 'cuda' else ''}")
 
-    compile_arms = [False] if args.no_compile else [False, True]
+    compile_arms = [True] if args.compile_only else ([False] if args.no_compile else [False, True])
     results = []
     for preset in args.presets:
         for tokens in args.tokens:
@@ -190,6 +237,8 @@ def main(argv=None) -> int:
                     res = profile_one(
                         preset, tokens, args.batch_size, use_compile,
                         args.steps, args.warmup, device, args.time_budget,
+                        num_heads=args.num_heads,
+                        mup_base_dim=args.mup_base_dim,
                     )
                 except Exception as exc:  # noqa: BLE001
                     print(f"  FAILED: {exc!r}")

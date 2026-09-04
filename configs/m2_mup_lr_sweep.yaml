@@ -1,0 +1,31 @@
+# M2 muTransfer gate. This file is intentionally non-runnable until the new
+# same-depth proxy/target pair has been profiled on a T4 and the user approves
+# a concrete GPU-hour ticket.
+run:
+  run_id: "m2_mup_lr_sweep"
+  milestone: "M2_hp_transfer_5M"
+  ticket_hours: null
+  purpose: "Tune base LR on the same-depth 5M muP proxy and verify width-only transfer to 15M"
+  seed: 0
+
+data:
+  # M1 contains only eight repeated windows and already produced a flat global
+  # flow field. M2 uses the representative M3 tier so LR ranking is meaningful.
+  data_dir: "/kaggle/working/nanowm_data/m3"
+  context_length: 16
+  batch_size: 8
+
+sweep:
+  presets: ["m2_proxy_5m", "15m"]
+  base_dim: 192
+  num_heads: 8
+  lrs: [0.0001, 0.0003, 0.001, 0.003, 0.01]
+  steps: 3000
+  trailing_window: 200
+
+runtime:
+  device: "cuda"
+  compile: true
+
+output:
+  path: "/kaggle/working/m2_lr_sweep.json"
