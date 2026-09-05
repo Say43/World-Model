@@ -1,0 +1,75 @@
+# M3 pre-flight: per-arm throughput + a 3-point Muon LR probe.
+#
+# NOT RUNNABLE AS COMMITTED (ticket_hours: null). A concrete GPU-hour
+# ticket is approved by the user first, and the value only goes into the
+# Kaggle-side copy at runtime. Same guard as m2_mup_lr_sweep.yaml and
+# m3_ablation.yaml; tests/test_m3_profile.py enforces it.
+#
+# Prerequisite: the M3 dataset must carry DINOv2 features, otherwise the
+# two REPA arms cannot even be built:
+#   python scripts/preprocess/precompute_dataset.py --tier m3 \
+#       --out-dir /kaggle/working/nanowm_data/m3 --with-dinov2
+# That is inference work against the Kaggle weekly quota, not against the
+# project's 20-hour training budget.
+#
+# Why this exists at all, in one line each:
+#   throughput  -- m3_ablation.yaml's steps_per_arm shapes each arm's LR
+#                  decay and must be measured, not guessed (an M1 run
+#                  diverged from exactly that mistake).
+#   muon_lrs    -- M2 tuned AdamW only. If 0.02 is wrong for this model,
+#                  all four Muon arms diverge: ~2.4 GPU-hours wasted
+#                  against ~0.15 for the probe.
+
+run:
+  run_id: "m3_profile"
+  milestone: "M3_ablations_15M"
+  ticket_hours: null
+  purpose: "Measure per-arm throughput and probe Muon's LR before scheduling the M3 ablation"
+  seed: 0
+
+data:
+  data_dir: "/kaggle/working/nanowm_data/m3"
+  context_length: 16
+  batch_size: 8
+
+model:
+  preset: "15m"
+
+optim:
+  adamw_lr: 0.0003          # from the M2 sweep, results/m2_lr_sweep.json
+  muon_lr: 0.02             # only a fallback; Phase 2 is what replaces it
+  muon_aux_adamw_lr: 0.0003
+  weight_decay: 0.0
+
+repa:
+  feature_dim: 384
+  align_layer: null
+  weight: 0.5
+
+profile:
+  # Discarded before timing: on CUDA the first steps include torch.compile's
+  # compilation, and counting them understates throughput -- which would set
+  # every step horizon too low and decay the schedule too early.
+  warmup_steps: 30
+  timed_steps: 100
+  # Two decades around the reference default. Muon's update is
+  # orthogonalized, so its step size is decoupled from gradient magnitude
+  # and its useful LR sits far above AdamW's -- a narrow grid around 3e-4
+  # would probe the wrong region entirely.
+  muon_lrs: [0.005, 0.02, 0.05]
+  probe_steps: 600
+  trailing_window: 100
+  # What one M3 arm is expected to get; used only to turn steps/s into a
+  # step horizon. Must match ablation.seconds_per_arm in m3_ablation.yaml.
+  target_seconds_per_arm: null
+  # Undershooting the horizon just finishes the schedule early and trains
+  # the tail at the LR floor; overshooting means the LR never decays.
+  # Asymmetric risk, so aim low.
+  safety_margin: 0.9
+
+runtime:
+  device: "cuda"
+  compile: true
+
+output:
+  path: "/kaggle/working/m3_profile.json"
