@@ -279,6 +279,7 @@ class CausalDiT(nn.Module):
         t: torch.Tensor,
         kv_cache: Optional[KVCache] = None,
         frame_start: int = 0,
+        return_hidden_layer: Optional[int] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -298,8 +299,19 @@ class CausalDiT(nn.Module):
                 `frame_pos_embed` and to build the causal mask against
                 `kv_cache`'s existing length.
 
+            return_hidden_layer: if given, also return that block's output
+                (0-based) alongside the velocity, as
+                `(velocity, hidden)`. Used by REPA (src/train/repa.py) to
+                align a mid-depth hidden state with frozen DINOv2 features.
+                An explicit argument rather than a forward hook: hooks
+                cause graph breaks under torch.compile, which is mandatory
+                here (CLAUDE.md's measured 1.2x-2.6x), and a break present
+                in only one arm of M3's ablation would confound the very
+                compute comparison the ablation is measuring.
+
         Returns:
-            (B, T, N, latent_channels) predicted velocity `v = x1 - x0`.
+            (B, T, N, latent_channels) predicted velocity `v = x1 - x0`, or
+            `(velocity, hidden)` when `return_hidden_layer` is given.
         """
         c = self.config
         b, tt, n, _ = latents.shape
@@ -327,8 +339,16 @@ class CausalDiT(nn.Module):
         mask = build_block_causal_mask(tt, n, cache_len, latents.device)
         mask = mask.unsqueeze(0).unsqueeze(0)  # broadcast over (B, H)
 
+        if return_hidden_layer is not None and not 0 <= return_hidden_layer < len(self.blocks):
+            raise ValueError(
+                f"return_hidden_layer={return_hidden_layer} out of range for depth {len(self.blocks)}"
+            )
+
+        hidden = None
         for i, block in enumerate(self.blocks):
             x = block(x, global_mod, mask, kv_cache=kv_cache, layer_idx=i)
+            if i == return_hidden_layer:
+                hidden = x
 
         hnorm = self.final_norm(x)
         shift, scale = self.final_mod(t_embed).chunk(2, dim=-1)
@@ -336,7 +356,10 @@ class CausalDiT(nn.Module):
         output = self.output_proj(hnorm)
         # Set by src.train.mup.configure_mup_model. This is MuReadout's
         # width multiplier; ordinary models retain multiplier 1.
-        return output / getattr(self, "mup_readout_width_mult", 1.0)
+        output = output / getattr(self, "mup_readout_width_mult", 1.0)
+        if return_hidden_layer is None:
+            return output
+        return output, hidden
 
 
 def count_parameters(model: nn.Module) -> int:
