@@ -101,29 +101,115 @@ class Muon(torch.optim.Optimizer):
                 loss = closure()
 
         for group in self.param_groups:
-            momentum = group["momentum"]
             for param in group["params"]:
                 if param.grad is None:
                     continue
-                grad = param.grad
-                state = self.state[param]
-                if "momentum_buffer" not in state:
-                    state["momentum_buffer"] = torch.zeros_like(grad)
-                buf = state["momentum_buffer"]
-                buf.mul_(momentum).add_(grad)
-                update = grad.add(buf, alpha=momentum) if group["nesterov"] else buf
+                _muon_update(param, self.state[param], group)
 
-                update = zeropower_via_newtonschulz(update, steps=group["ns_steps"])
+        return loss
 
-                # The orthogonalized update has singular values ~1 regardless
-                # of the matrix's shape, so a non-square matrix would
-                # otherwise take a systematically larger or smaller effective
-                # step than a square one. This is the reference scaling.
-                scale = max(1.0, param.size(0) / param.size(1)) ** 0.5
 
-                if group["weight_decay"]:
-                    param.mul_(1 - group["lr"] * group["weight_decay"])
-                param.add_(update, alpha=-group["lr"] * scale)
+def _muon_update(param: torch.Tensor, state: dict, group: dict) -> None:
+    """One Muon step for one 2D parameter, in place.
+
+    Factored out of Muon.step so the hybrid optimizer below applies exactly
+    the same update rather than a second copy of it that could drift.
+    """
+    grad = param.grad
+    momentum = group["momentum"]
+    if "momentum_buffer" not in state:
+        state["momentum_buffer"] = torch.zeros_like(grad)
+    buf = state["momentum_buffer"]
+    buf.mul_(momentum).add_(grad)
+    update = grad.add(buf, alpha=momentum) if group["nesterov"] else buf
+
+    update = zeropower_via_newtonschulz(update, steps=group["ns_steps"])
+
+    # The orthogonalized update has singular values ~1 regardless of the
+    # matrix's shape, so a non-square matrix would otherwise take a
+    # systematically larger or smaller effective step than a square one.
+    # This is the reference scaling.
+    scale = max(1.0, param.size(0) / param.size(1)) ** 0.5
+
+    if group["weight_decay"]:
+        param.mul_(1 - group["lr"] * group["weight_decay"])
+    param.add_(update, alpha=-group["lr"] * scale)
+
+
+def _adamw_update(param: torch.Tensor, state: dict, group: dict) -> None:
+    """One AdamW step for one parameter, in place.
+
+    Written out rather than delegating to torch.optim.AdamW because the
+    hybrid optimizer has to be a single torch.optim.Optimizer: the trainer
+    passes one optimizer to GradScaler.unscale_/step and the LR scheduler
+    writes into one param_groups list. Holding a second, separate AdamW
+    inside would leave its groups invisible to both.
+
+    tests/test_train_muon.py checks this against torch.optim.AdamW
+    step-for-step, so "it is really AdamW" is verified, not asserted.
+    """
+    grad = param.grad
+    beta1, beta2 = group["betas"]
+    if "step" not in state:
+        state["step"] = 0
+        state["exp_avg"] = torch.zeros_like(param)
+        state["exp_avg_sq"] = torch.zeros_like(param)
+    state["step"] += 1
+    step = state["step"]
+    exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
+
+    if group["weight_decay"]:
+        param.mul_(1 - group["lr"] * group["weight_decay"])  # decoupled, as in AdamW
+
+    exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+    exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+
+    bias_correction1 = 1 - beta1 ** step
+    bias_correction2 = 1 - beta2 ** step
+    denom = (exp_avg_sq.sqrt() / (bias_correction2 ** 0.5)).add_(group["eps"])
+    param.addcdiv_(exp_avg, denom, value=-group["lr"] / bias_correction1)
+
+
+class MuonWithAuxAdamW(torch.optim.Optimizer):
+    """Muon on the 2D parameters, AdamW on everything else, in one optimizer.
+
+    The two halves keep separate learning rates -- Muon's useful LR is
+    typically an order of magnitude above AdamW's, because the
+    orthogonalized update's magnitude is decoupled from the gradient's. The
+    LR scheduler scales both groups by the same factor, so the ratio the
+    config sets is preserved across the whole schedule.
+    """
+
+    def __init__(self, model: torch.nn.Module, muon_lr: float, adamw_lr: float,
+                 momentum: float = 0.95, nesterov: bool = True, ns_steps: int = 5,
+                 weight_decay: float = 0.0, betas=(0.9, 0.95), eps: float = 1e-8):
+        muon_params, adamw_params = split_muon_adamw_params(model)
+        if not muon_params:
+            raise ValueError("no 2D parameters found: Muon would have nothing to do")
+        groups = [
+            dict(params=muon_params, algorithm="muon", lr=muon_lr, momentum=momentum,
+                 nesterov=nesterov, ns_steps=ns_steps, weight_decay=weight_decay),
+            dict(params=adamw_params, algorithm="adamw", lr=adamw_lr, betas=betas,
+                 eps=eps, weight_decay=weight_decay),
+        ]
+        # `defaults` is only consulted for keys a group omits; every group
+        # here is explicit, so it stays empty apart from lr, which
+        # torch.optim.Optimizer's repr expects.
+        super().__init__(groups, dict(lr=adamw_lr))
+
+    @torch.no_grad()
+    def step(self, closure=None):
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        for group in self.param_groups:
+            update = _muon_update if group["algorithm"] == "muon" else _adamw_update
+            for param in group["params"]:
+                if param.grad is None:
+                    continue
+                update(param, self.state[param], group)
 
         return loss
 

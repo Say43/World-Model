@@ -55,6 +55,31 @@ class RepaHead(nn.Module):
         return self.net(hidden_states)
 
 
+def attach_repa_head(model, feature_dim: int, align_layer: int | None = None,
+                     hidden_mult: int = 2) -> RepaHead:
+    """Install a REPA head on a CausalDiT, in place; returns the head.
+
+    Attached as a submodule rather than kept beside the model so that (a) the
+    optimizer picks it up through `model.parameters()` like everything else,
+    (b) it is saved and resumed with the checkpoint, and (c) under DDP its
+    gradients are all-reduced, which requires the head to be used inside the
+    wrapped module's own forward (see `CausalDiT.forward`'s `return_repa`).
+
+    Must be called before the model is wrapped for DDP or compiled: DDP
+    inspects the parameter set once, at construction.
+    """
+    if model.repa_head is not None:
+        raise ValueError("model already has a REPA head attached")
+    depth = model.num_layers()
+    layer = default_align_layer(depth) if align_layer is None else align_layer
+    if not 0 <= layer < depth:
+        raise ValueError(f"align_layer={layer} out of range for depth {depth}")
+    head = RepaHead(model.config.dim, feature_dim, hidden_mult=hidden_mult)
+    model.repa_head = head
+    model.repa_align_layer = layer
+    return head
+
+
 def repa_loss(projected: torch.Tensor, target_features: torch.Tensor) -> torch.Tensor:
     """Mean negative cosine similarity, per token.
 

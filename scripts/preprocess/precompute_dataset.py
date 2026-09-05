@@ -13,9 +13,18 @@ Output is one .npz per trajectory plus a manifest.json, under --out-dir:
   t_values       (T,)         float32   -- placeholder noise level, filled by
                                             the training loop, not here
 
+With --with-dinov2, one more array is stored per trajectory:
+  dinov2         (T, 16, 384) float32   -- frozen DINOv2-small patch features
+                                            pooled onto the same token grid
+
+REPA's alignment target has to be computed here rather than in the training
+loop: running a second frozen encoder every step would make the REPA arm of
+M3's ablation slower for a reason that has nothing to do with the method,
+and the comparison M3 exists to make is per-wall-clock-hour.
+
 Usage:
     python scripts/preprocess/precompute_dataset.py --tier m1 --out-dir /kaggle/working/nanowm_data
-    python scripts/preprocess/precompute_dataset.py --tier m3 --out-dir /kaggle/working/nanowm_data
+    python scripts/preprocess/precompute_dataset.py --tier m3 --out-dir /kaggle/working/nanowm_data --with-dinov2
 """
 import argparse
 import json
@@ -36,7 +45,9 @@ from src.data.trajectories import (  # noqa: E402
     generate_out_and_back,
     make_intrinsics,
 )
-from src.eval.chosen_ae import RESOLUTION, encode_frames, load_chosen_ae  # noqa: E402
+from src.data.dinov2 import FEATURE_DIM as DINOV2_FEATURE_DIM  # noqa: E402
+from src.data.dinov2 import MODEL_ID as DINOV2_MODEL_ID  # noqa: E402
+from src.eval.chosen_ae import LATENT_GRID, RESOLUTION, encode_frames, load_chosen_ae  # noqa: E402
 
 # Data-volume tiers per CLAUDE.md's M0 plan: 1 scene/1 trajectory for the M1
 # overfit check; ~30-50 scenes x 3-4 trajectories for M3/M4.
@@ -62,11 +73,37 @@ def build_trajectory(scene_seed: int, traj_idx: int, length: int):
     return generate_out_and_back(seed=seed, length=length, intrinsics=intr)
 
 
+def trajectory_arrays(traj, latents: np.ndarray, dinov2_features=None) -> dict:
+    """The arrays that go into one trajectory's .npz.
+
+    Separated from main() so the npz contract can be tested without loading
+    either frozen encoder. `dinov2_features` is omitted rather than stored as
+    an empty array when absent, so a dataset built without --with-dinov2 is
+    distinguishable from one where extraction silently produced nothing.
+    """
+    arrays = {
+        "latents": latents,
+        "poses": traj.poses,
+        "intrinsics": np.array(traj.intrinsics.as_tuple(), dtype=np.float32),
+        "revisit_of": np.array([r if r is not None else -1 for r in traj.revisit_of], dtype=np.int32),
+    }
+    if dinov2_features is not None:
+        if dinov2_features.shape[0] != latents.shape[0]:
+            raise ValueError(
+                f"DINOv2 features cover {dinov2_features.shape[0]} frames but "
+                f"latents cover {latents.shape[0]}"
+            )
+        arrays["dinov2"] = dinov2_features.astype(np.float32)
+    return arrays
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--tier", choices=list(TIERS), required=True)
     p.add_argument("--out-dir", required=True)
     p.add_argument("--device", default="cuda")
+    p.add_argument("--with-dinov2", action="store_true",
+                   help="also store frozen DINOv2-small features (REPA's alignment target)")
     args = p.parse_args(argv)
 
     tier = TIERS[args.tier]
@@ -75,6 +112,14 @@ def main(argv=None) -> int:
 
     print(f"Loading chosen AE ({args.device})...")
     ae = load_chosen_ae(device=args.device)
+
+    dinov2 = None
+    if args.with_dinov2:
+        from src.data.dinov2 import encode_frames as encode_dinov2_frames
+        from src.data.dinov2 import load_dinov2
+        print(f"Loading {DINOV2_MODEL_ID} ({args.device})...")
+        dinov2 = load_dinov2(device=args.device)
+
     renderer = Renderer()
 
     manifest = []
@@ -88,14 +133,15 @@ def main(argv=None) -> int:
             traj = build_trajectory(scene_seed, traj_idx, length)
             frames = render_trajectory_frames(renderer, mesh, traj, RESOLUTION)
             latents = encode_frames(ae, frames, device=args.device)
+            features = None
+            if dinov2 is not None:
+                features = encode_dinov2_frames(dinov2, frames, latent_grid=LATENT_GRID,
+                                                device=args.device)
 
             name = f"scene{scene_seed:03d}_traj{traj_idx:02d}_{traj.kind}_len{length}"
             np.savez_compressed(
                 out_dir / f"{name}.npz",
-                latents=latents,
-                poses=traj.poses,
-                intrinsics=np.array(traj.intrinsics.as_tuple(), dtype=np.float32),
-                revisit_of=np.array([r if r is not None else -1 for r in traj.revisit_of], dtype=np.int32),
+                **trajectory_arrays(traj, latents, features),
             )
             manifest.append({"name": name, "scene_seed": scene_seed, "kind": traj.kind,
                               "length": length, "num_revisits": traj.num_revisits})
@@ -110,6 +156,8 @@ def main(argv=None) -> int:
         "ae_model_id": ae.config._name_or_path if hasattr(ae.config, "_name_or_path") else None,
         "resolution": RESOLUTION,
         "tokens_per_frame": 16,
+        "dinov2_model_id": DINOV2_MODEL_ID if args.with_dinov2 else None,
+        "dinov2_feature_dim": DINOV2_FEATURE_DIM if args.with_dinov2 else None,
         "num_trajectories": len(manifest),
         "total_frames": total_frames,
         "trajectories": manifest,

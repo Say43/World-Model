@@ -268,6 +268,13 @@ class CausalDiT(nn.Module):
         nn.init.zeros_(self.output_proj.weight)
         nn.init.zeros_(self.output_proj.bias)
 
+        # Optional REPA auxiliary head; None unless
+        # src.train.repa.attach_repa_head installs one. Declared here rather
+        # than assigned ad hoc so a model without REPA has a definite,
+        # checkpoint-visible "no head" state instead of a missing attribute.
+        self.repa_head: Optional[nn.Module] = None
+        self.repa_align_layer: Optional[int] = None
+
     def num_layers(self) -> int:
         return len(self.blocks)
 
@@ -280,6 +287,7 @@ class CausalDiT(nn.Module):
         kv_cache: Optional[KVCache] = None,
         frame_start: int = 0,
         return_hidden_layer: Optional[int] = None,
+        return_repa: bool = False,
     ) -> torch.Tensor:
         """
         Args:
@@ -309,9 +317,19 @@ class CausalDiT(nn.Module):
                 in only one arm of M3's ablation would confound the very
                 compute comparison the ablation is measuring.
 
+            return_repa: if True, also return the REPA projection head's
+                output for the attached alignment layer, as
+                `(velocity, projected)`. Requires
+                `src.train.repa.attach_repa_head` to have been called.
+                The projection happens inside this forward, not in the loss
+                function, so that under DDP the head's parameters are marked
+                used within the wrapped module's forward pass and their
+                gradients are all-reduced like every other parameter's.
+
         Returns:
             (B, T, N, latent_channels) predicted velocity `v = x1 - x0`, or
-            `(velocity, hidden)` when `return_hidden_layer` is given.
+            `(velocity, hidden)` when `return_hidden_layer` is given, or
+            `(velocity, projected)` when `return_repa` is set.
         """
         c = self.config
         b, tt, n, _ = latents.shape
@@ -339,6 +357,16 @@ class CausalDiT(nn.Module):
         mask = build_block_causal_mask(tt, n, cache_len, latents.device)
         mask = mask.unsqueeze(0).unsqueeze(0)  # broadcast over (B, H)
 
+        if return_repa:
+            if self.repa_head is None:
+                raise ValueError(
+                    "return_repa=True but no REPA head is attached; call "
+                    "src.train.repa.attach_repa_head(model, ...) first"
+                )
+            if return_hidden_layer is not None:
+                raise ValueError("pass either return_hidden_layer or return_repa, not both")
+            return_hidden_layer = self.repa_align_layer
+
         if return_hidden_layer is not None and not 0 <= return_hidden_layer < len(self.blocks):
             raise ValueError(
                 f"return_hidden_layer={return_hidden_layer} out of range for depth {len(self.blocks)}"
@@ -357,6 +385,8 @@ class CausalDiT(nn.Module):
         # Set by src.train.mup.configure_mup_model. This is MuReadout's
         # width multiplier; ordinary models retain multiplier 1.
         output = output / getattr(self, "mup_readout_width_mult", 1.0)
+        if return_repa:
+            return output, self.repa_head(hidden)
         if return_hidden_layer is None:
             return output
         return output, hidden

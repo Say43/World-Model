@@ -41,3 +41,43 @@ def test_render_trajectory_frames_shape():
     assert frames.shape == (32, 64, 64, 3)
     assert frames.dtype == np.float32
     assert 0.0 <= frames.min() and frames.max() <= 1.0
+
+
+def test_trajectory_arrays_omits_dinov2_key_when_not_extracted():
+    from precompute_dataset import trajectory_arrays
+
+    traj = build_trajectory(scene_seed=0, traj_idx=0, length=32)
+    arrays = trajectory_arrays(traj, latents=np.zeros((32, 16, 128), dtype=np.float32))
+    assert set(arrays) == {"latents", "poses", "intrinsics", "revisit_of"}
+
+
+def test_trajectory_arrays_stores_dinov2_as_float32():
+    from precompute_dataset import trajectory_arrays
+
+    traj = build_trajectory(scene_seed=0, traj_idx=0, length=32)
+    features = np.zeros((32, 16, 384), dtype=np.float64)
+    arrays = trajectory_arrays(traj, np.zeros((32, 16, 128), dtype=np.float32), features)
+    assert arrays["dinov2"].shape == (32, 16, 384)
+    assert arrays["dinov2"].dtype == np.float32
+
+
+def test_trajectory_arrays_rejects_frame_count_mismatch():
+    """A silent mismatch here would be stored and only surface as a shape
+    error deep inside a paid training run."""
+    import pytest
+
+    from precompute_dataset import trajectory_arrays
+
+    traj = build_trajectory(scene_seed=0, traj_idx=0, length=32)
+    with pytest.raises(ValueError, match="frames"):
+        trajectory_arrays(traj, np.zeros((32, 16, 128), dtype=np.float32),
+                          np.zeros((31, 16, 384), dtype=np.float32))
+
+
+def test_revisit_of_encodes_none_as_minus_one():
+    from precompute_dataset import trajectory_arrays
+
+    traj = build_trajectory(scene_seed=0, traj_idx=1, length=64)
+    arrays = trajectory_arrays(traj, np.zeros((64, 16, 128), dtype=np.float32))
+    assert arrays["revisit_of"].dtype == np.int32
+    assert set(np.unique(arrays["revisit_of"])) <= set(range(-1, 64))

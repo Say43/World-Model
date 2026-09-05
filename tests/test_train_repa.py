@@ -111,3 +111,126 @@ def test_repa_gradient_reaches_the_dit_trunk():
     # constrains the trunk up to the layer it reads.
     later_block_grad = model.blocks[cfg.depth - 1].attn.qkv.weight.grad
     assert later_block_grad is None or later_block_grad.abs().sum() == 0
+
+
+def test_attach_repa_head_installs_head_into_the_model_parameters():
+    """The head must be a submodule, not a sidecar: the optimizer is built
+    from model.parameters(), and DDP fixes its parameter set at wrap time."""
+    from src.train.repa import attach_repa_head
+
+    cfg = tiny_config(depth=6)
+    model = CausalDiT(cfg)
+    before = {id(p) for p in model.parameters()}
+    head = attach_repa_head(model, feature_dim=32)
+
+    after = {id(p) for p in model.parameters()}
+    assert {id(p) for p in head.parameters()} <= after
+    assert len(after) > len(before)
+    assert model.repa_align_layer == 2  # depth 6 // 3
+
+
+def test_attach_repa_head_honors_an_explicit_align_layer_and_rejects_bad_ones():
+    from src.train.repa import attach_repa_head
+
+    model = CausalDiT(tiny_config(depth=6))
+    attach_repa_head(model, feature_dim=32, align_layer=4)
+    assert model.repa_align_layer == 4
+
+    with pytest.raises(ValueError, match="already has a REPA head"):
+        attach_repa_head(model, feature_dim=32)
+
+    with pytest.raises(ValueError, match="out of range"):
+        attach_repa_head(CausalDiT(tiny_config(depth=6)), feature_dim=32, align_layer=6)
+
+
+def test_return_repa_projects_the_attached_layer():
+    from src.train.repa import attach_repa_head
+
+    cfg = tiny_config(depth=6)
+    model = break_zero_init(CausalDiT(cfg))
+    attach_repa_head(model, feature_dim=32, align_layer=2)
+    latents, poses, intrinsics, t = random_batch(cfg, batch_size=2)
+    model.eval()
+
+    with torch.no_grad():
+        velocity, projected = model(latents, poses, intrinsics, t, return_repa=True)
+        _, hidden = model(latents, poses, intrinsics, t, return_hidden_layer=2)
+        expected = model.repa_head(hidden)
+
+    assert velocity.shape == (2, cfg.context_length, cfg.tokens_per_frame, cfg.latent_channels)
+    assert projected.shape == (2, cfg.context_length, cfg.tokens_per_frame, 32)
+    torch.testing.assert_close(projected, expected)
+
+
+def test_return_repa_without_a_head_fails_rather_than_training_the_baseline():
+    cfg = tiny_config()
+    model = CausalDiT(cfg)
+    latents, poses, intrinsics, t = random_batch(cfg, batch_size=1)
+    with pytest.raises(ValueError, match="no REPA head"):
+        model(latents, poses, intrinsics, t, return_repa=True)
+
+
+def test_repa_loss_fn_trains_trunk_and_head_together():
+    """End-to-end on the scripts/train.py contract: loss_fn(model, batch)."""
+    from src.train.losses import rectified_flow_loss_with_repa
+    from src.train.repa import attach_repa_head
+
+    cfg = tiny_config(depth=6)
+    model = break_zero_init(CausalDiT(cfg))
+    attach_repa_head(model, feature_dim=32, align_layer=2)
+    model.repa_weight = 0.5
+    latents, poses, intrinsics, _ = random_batch(cfg, batch_size=2)
+    batch = {
+        "latents": latents, "poses": poses, "intrinsics": intrinsics,
+        "dinov2": torch.randn(2, cfg.context_length, cfg.tokens_per_frame, 32),
+    }
+
+    loss = rectified_flow_loss_with_repa(model, batch)
+    assert torch.isfinite(loss)
+    loss.backward()
+
+    assert model.repa_head.net[0].weight.grad.abs().sum() > 0
+    assert model.blocks[2].attn.qkv.weight.grad.abs().sum() > 0
+    assert model.output_proj.weight.grad.abs().sum() > 0
+
+
+def test_repa_loss_fn_reports_a_missing_weight_and_missing_features_clearly():
+    from src.train.losses import rectified_flow_loss_with_repa
+    from src.train.repa import attach_repa_head
+
+    cfg = tiny_config(depth=6)
+    model = break_zero_init(CausalDiT(cfg))
+    attach_repa_head(model, feature_dim=32)
+    latents, poses, intrinsics, _ = random_batch(cfg, batch_size=1)
+    batch = {"latents": latents, "poses": poses, "intrinsics": intrinsics}
+
+    with pytest.raises(KeyError, match="--with-dinov2"):
+        rectified_flow_loss_with_repa(model, batch)
+
+    batch["dinov2"] = torch.randn(1, cfg.context_length, cfg.tokens_per_frame, 32)
+    with pytest.raises(AttributeError, match="repa_weight"):
+        rectified_flow_loss_with_repa(model, batch)
+
+
+def test_repa_weight_zero_matches_the_plain_flow_loss():
+    """A weight of 0 must reduce exactly to the baseline arm -- the sanity
+    check that the two M3 arms differ only by the term under test."""
+    from src.train.losses import rectified_flow_loss, rectified_flow_loss_with_repa
+    from src.train.repa import attach_repa_head
+
+    cfg = tiny_config(depth=6)
+    model = break_zero_init(CausalDiT(cfg))
+    attach_repa_head(model, feature_dim=32)
+    model.repa_weight = 0.0
+    latents, poses, intrinsics, _ = random_batch(cfg, batch_size=2)
+    batch = {
+        "latents": latents, "poses": poses, "intrinsics": intrinsics,
+        "dinov2": torch.randn(2, cfg.context_length, cfg.tokens_per_frame, 32),
+    }
+
+    torch.manual_seed(0)
+    with_repa = rectified_flow_loss_with_repa(model, batch)
+    torch.manual_seed(0)
+    plain = rectified_flow_loss(model, batch)
+
+    torch.testing.assert_close(with_repa, plain)

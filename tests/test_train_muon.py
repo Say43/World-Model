@@ -130,3 +130,103 @@ def test_split_routes_matrices_to_muon_and_the_rest_to_adamw():
     assert total == sum(param.numel() for param in model.parameters())
     # The matrices should dominate: if this ever inverts, the split is wrong.
     assert sum(p.numel() for p in muon_params) > sum(p.numel() for p in adamw_params)
+
+
+def test_aux_adamw_matches_torch_adamw_step_for_step():
+    """The hybrid optimizer reimplements AdamW inline (it has to be one
+    torch.optim.Optimizer for GradScaler and the LR scheduler). That is only
+    acceptable if it really is AdamW, so check it against the reference."""
+    from src.train.muon import _adamw_update
+
+    torch.manual_seed(0)
+    grads = [torch.randn(6, 6) for _ in range(12)]
+    init = torch.randn(6, 6)
+
+    reference = torch.nn.Parameter(init.clone())
+    ours = torch.nn.Parameter(init.clone())
+    torch_opt = torch.optim.AdamW([reference], lr=0.01, betas=(0.9, 0.95),
+                                  eps=1e-8, weight_decay=0.1)
+    group = dict(lr=0.01, betas=(0.9, 0.95), eps=1e-8, weight_decay=0.1)
+    state = {}
+
+    for grad in grads:
+        reference.grad = grad.clone()
+        ours.grad = grad.clone()
+        torch_opt.step()
+        with torch.no_grad():  # as MuonWithAuxAdamW.step provides
+            _adamw_update(ours, state, group)
+
+    torch.testing.assert_close(ours.data, reference.data, rtol=1e-5, atol=1e-6)
+
+
+def _hybrid_model():
+    import torch.nn as nn
+
+    torch.manual_seed(0)
+    return nn.Sequential(nn.Linear(8, 8), nn.LayerNorm(8), nn.Linear(8, 4))
+
+
+def test_hybrid_routes_each_group_to_its_own_algorithm():
+    from src.train.muon import MuonWithAuxAdamW
+
+    model = _hybrid_model()
+    opt = MuonWithAuxAdamW(model, muon_lr=0.02, adamw_lr=0.001)
+
+    by_algorithm = {g["algorithm"]: g for g in opt.param_groups}
+    assert set(by_algorithm) == {"muon", "adamw"}
+    assert all(p.ndim == 2 for p in by_algorithm["muon"]["params"])
+    assert all(p.ndim != 2 for p in by_algorithm["adamw"]["params"])
+    covered = sum(p.numel() for g in opt.param_groups for p in g["params"])
+    assert covered == sum(p.numel() for p in model.parameters())
+
+
+def test_hybrid_keeps_separate_learning_rates_and_scheduler_preserves_the_ratio():
+    """Muon's useful LR is ~10x AdamW's; a scheduler that collapsed both to
+    one value would silently make the M3 Muon arm a different experiment."""
+    from src.train.muon import MuonWithAuxAdamW
+    from src.train.scheduler import WarmupScheduler
+
+    model = _hybrid_model()
+    opt = MuonWithAuxAdamW(model, muon_lr=0.02, adamw_lr=0.001)
+    sched = WarmupScheduler(opt, warmup_steps=5, total_steps=50)
+
+    for _ in range(20):
+        sched.step()
+
+    lrs = {g["algorithm"]: g["lr"] for g in opt.param_groups}
+    assert lrs["muon"] > lrs["adamw"]
+    assert lrs["muon"] / lrs["adamw"] == pytest.approx(20.0)
+    assert lrs["muon"] < 0.02, "schedule should have decayed below the peak"
+
+
+def test_hybrid_updates_both_kinds_of_parameter():
+    from src.train.muon import MuonWithAuxAdamW
+
+    model = _hybrid_model()
+    opt = MuonWithAuxAdamW(model, muon_lr=0.02, adamw_lr=0.001)
+    before = [p.detach().clone() for p in model.parameters()]
+
+    model(torch.randn(4, 8)).pow(2).mean().backward()
+    opt.step()
+
+    for old, new in zip(before, model.parameters()):
+        assert not torch.equal(old, new), "every parameter should have moved"
+        assert torch.isfinite(new).all()
+
+
+def test_hybrid_state_survives_a_round_trip():
+    """Checkpoint resume has to restore momentum buffers AND Adam moments;
+    losing either restarts the optimizer mid-run."""
+    from src.train.muon import MuonWithAuxAdamW
+
+    model = _hybrid_model()
+    opt = MuonWithAuxAdamW(model, muon_lr=0.02, adamw_lr=0.001)
+    model(torch.randn(4, 8)).pow(2).mean().backward()
+    opt.step()
+
+    restored = MuonWithAuxAdamW(_hybrid_model(), muon_lr=0.02, adamw_lr=0.001)
+    restored.load_state_dict(opt.state_dict())
+
+    kinds = {tuple(sorted(s)) for s in restored.state.values()}
+    assert ("momentum_buffer",) in kinds
+    assert ("exp_avg", "exp_avg_sq", "step") in kinds

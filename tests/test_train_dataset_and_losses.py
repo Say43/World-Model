@@ -15,13 +15,17 @@ from src.train.losses import rectified_flow_loss
 from src.train.model_factory import build_causal_dit
 
 
-def _write_fake_trajectory(path, length=32, latent_channels=128, tokens_per_frame=16):
-    np.savez(
-        path,
+def _write_fake_trajectory(path, length=32, latent_channels=128, tokens_per_frame=16,
+                            dinov2_dim=None):
+    arrays = dict(
         latents=np.random.default_rng(0).standard_normal((length, tokens_per_frame, latent_channels)).astype("float32"),
         poses=np.tile(np.eye(4, dtype="float32"), (length, 1, 1)),
         intrinsics=np.array([4.0, 4.0, 2.0, 2.0], dtype="float32"),
     )
+    if dinov2_dim is not None:
+        arrays["dinov2"] = np.random.default_rng(1).standard_normal(
+            (length, tokens_per_frame, dinov2_dim)).astype("float32")
+    np.savez(path, **arrays)
 
 
 def test_dataset_windows_shorter_trajectory_is_skipped(tmp_path):
@@ -90,3 +94,34 @@ def test_model_factory_overrides_match_chosen_ae():
 def test_model_factory_rejects_unknown_preset():
     with pytest.raises(ValueError):
         build_causal_dit("100m")
+
+
+def test_dataset_omits_dinov2_unless_asked(tmp_path):
+    _write_fake_trajectory(tmp_path / "a.npz", length=32, dinov2_dim=384)
+    ds = TrajectoryWindowDataset(str(tmp_path), context_length=16, stride=16)
+    assert "dinov2" not in ds[0]
+
+
+def test_dataset_yields_dinov2_window_aligned_with_latents(tmp_path):
+    """REPA's target must be the SAME frames as the window's latents --
+    an off-by-one window slice would train the model to align frame t's
+    hidden state with frame t+1's features and quietly degrade the arm."""
+    _write_fake_trajectory(tmp_path / "a.npz", length=32, dinov2_dim=384)
+    ds = TrajectoryWindowDataset(str(tmp_path), context_length=16, stride=16,
+                                 with_dinov2=True)
+    item = ds[1]
+    assert item["dinov2"].shape == (16, 16, 384)
+    assert item["dinov2"].dtype == torch.float32
+
+    with np.load(tmp_path / "a.npz") as raw:
+        expected = raw["dinov2"][16:32]
+    # fp16 in the cache, so compare at fp16 tolerance rather than exactly.
+    np.testing.assert_allclose(item["dinov2"].numpy(), expected, rtol=1e-2, atol=1e-2)
+
+
+def test_dataset_fails_loudly_when_dinov2_is_requested_but_absent(tmp_path):
+    """The M3 datasets precomputed before --with-dinov2 existed lack the
+    array; silently training REPA on nothing would look like a null result."""
+    _write_fake_trajectory(tmp_path / "a.npz", length=32)
+    with pytest.raises(KeyError, match="--with-dinov2"):
+        TrajectoryWindowDataset(str(tmp_path), context_length=16, with_dinov2=True)

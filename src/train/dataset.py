@@ -22,9 +22,11 @@ class TrajectoryWindowDataset(Dataset):
     on; a trajectory longer than context_length yields multiple windows.
     """
 
-    def __init__(self, data_dir: str, context_length: int, stride: int = None):
+    def __init__(self, data_dir: str, context_length: int, stride: int = None,
+                 with_dinov2: bool = False):
         self.context_length = context_length
         self.stride = stride or context_length
+        self.with_dinov2 = with_dinov2
         self._index: List[tuple] = []  # (traj_key, window_start)
         # Every trajectory's arrays are decompressed into memory once, here,
         # rather than in __getitem__. The first version of this class called
@@ -44,11 +46,25 @@ class TrajectoryWindowDataset(Dataset):
             raise FileNotFoundError(f"no .npz trajectories found in {data_dir}")
         for path in paths:
             with np.load(path) as data:
-                self._cache[path] = {
+                entry = {
                     "latents": data["latents"].astype(np.float32),
                     "poses": data["poses"].astype(np.float32),
                     "intrinsics": data["intrinsics"].astype(np.float32),
                 }
+                if with_dinov2:
+                    if "dinov2" not in data:
+                        raise KeyError(
+                            f"{path.name} has no 'dinov2' array: this dataset was "
+                            "precomputed without --with-dinov2, so REPA cannot train "
+                            "on it. Re-run scripts/preprocess/precompute_dataset.py "
+                            "with that flag."
+                        )
+                    # fp16 in the cache: these are ~10x the latents' volume
+                    # (16 tokens x 384 dims vs 16 x 128) and only their
+                    # direction is used, by a cosine loss. Widened back to
+                    # fp32 per window in __getitem__.
+                    entry["dinov2"] = data["dinov2"].astype(np.float16)
+                self._cache[path] = entry
             length = self._cache[path]["latents"].shape[0]
             if length < context_length:
                 del self._cache[path]
@@ -68,16 +84,22 @@ class TrajectoryWindowDataset(Dataset):
         end = start + self.context_length
         cached = self._cache[path]
         intrinsics = cached["intrinsics"]
-        return {
+        item = {
             "latents": torch.from_numpy(cached["latents"][start:end].copy()),
             "poses": torch.from_numpy(cached["poses"][start:end].copy()),
             "intrinsics": torch.from_numpy(np.broadcast_to(intrinsics, (self.context_length, 4)).copy()),
         }
+        if self.with_dinov2:
+            item["dinov2"] = torch.from_numpy(
+                cached["dinov2"][start:end].astype(np.float32)
+            )
+        return item
 
 
 def build_dataloader(data_dir: str, context_length: int, batch_size: int,
-                      stride: int = None, shuffle: bool = True, num_workers: int = 0):
-    dataset = TrajectoryWindowDataset(data_dir, context_length, stride)
+                      stride: int = None, shuffle: bool = True, num_workers: int = 0,
+                      with_dinov2: bool = False):
+    dataset = TrajectoryWindowDataset(data_dir, context_length, stride, with_dinov2=with_dinov2)
     # Private generator: DataLoader.__iter__ draws from the global torch RNG
     # on every call otherwise, which perturbs whatever else reads that
     # stream (see src/train/trainer.py's resume-determinism fix for why

@@ -13,7 +13,11 @@ Config schema (see configs/smoke_cpu.yaml for a full example):
     data:       target (dotted path to a callable returning a DataLoader), kwargs
     model:      target (dotted path to a callable returning an nn.Module), kwargs
     loss:       target (dotted path to loss_fn(model, batch) -> scalar tensor)
-    optim:      lr, weight_decay (AdamW)
+    optim:      lr, weight_decay; optional optimizer: adamw (default) | muon,
+                and muon_lr when optimizer is muon
+    repa:       optional -- feature_dim, weight, align_layer (null = depth//3);
+                requires a loss target that consumes the DINOv2 features and a
+                dataloader built with with_dinov2: true
     trainer:    TrainerConfig fields (warmup_steps, total_steps, grad_clip, ...)
     checkpoint: dir, interval_steps
 """
@@ -145,6 +149,23 @@ def main(argv=None) -> int:
 
     try:
         model = build_model(cfg)
+
+        # REPA's head must exist before DDP wrapping and before the optimizer
+        # is built: DDP inspects the parameter set once, at construction, and
+        # a head installed afterwards would train unsynchronized across ranks
+        # and be missing from the optimizer entirely.
+        repa_cfg = cfg.get("repa")
+        if repa_cfg:
+            from src.train.repa import attach_repa_head
+            head = attach_repa_head(
+                model,
+                feature_dim=repa_cfg["feature_dim"],
+                align_layer=repa_cfg.get("align_layer"),
+            )
+            model.repa_weight = float(repa_cfg["weight"])
+            print(f"REPA: align_layer={model.repa_align_layer}, weight={model.repa_weight}, "
+                  f"head_params={sum(p.numel() for p in head.parameters())}")
+
         model = wrap_model(model, ddp_ctx)
         # Optimizer param groups are built from the model BEFORE
         # torch.compile wraps it, same reasoning as src/train/utils.py's
@@ -173,7 +194,36 @@ def main(argv=None) -> int:
                 print(f"torch.compile failed, continuing eager: {exc!r}", file=sys.stderr)
 
         mup_cfg = cfg.get("mup")
-        if mup_cfg:
+        optimizer_name = cfg["optim"].get("optimizer", "adamw")
+        if optimizer_name == "muon":
+            # Not combined with muP on purpose. muP's LR scaling rules are
+            # derived for Adam-family per-coordinate updates; Muon's update
+            # is orthogonalized, so its width scaling is a different (and
+            # unsettled) question. Silently composing the two would make
+            # M3's optimizer ablation measure an untested interaction rather
+            # than Muon. Refuse instead of guessing (CLAUDE.md: "Bei
+            # Unklarheit ueber eine Designentscheidung: fragen, nicht raten").
+            if mup_cfg:
+                raise ValueError(
+                    "optim.optimizer=muon together with a mup block is not supported: "
+                    "muP's LR scaling is derived for Adam-family updates and its "
+                    "interaction with Muon's orthogonalized update is untested. "
+                    "Pick one."
+                )
+            from src.train.muon import MuonWithAuxAdamW
+            optimizer = MuonWithAuxAdamW(
+                raw_model_for_optim,
+                muon_lr=cfg["optim"]["muon_lr"],
+                adamw_lr=cfg["optim"]["lr"],
+                weight_decay=cfg["optim"].get("weight_decay", 0.0),
+            )
+            counts = {g["algorithm"]: sum(p.numel() for p in g["params"])
+                      for g in optimizer.param_groups}
+            print(f"Muon: muon_lr={cfg['optim']['muon_lr']}, adamw_lr={cfg['optim']['lr']}, "
+                  f"params muon={counts['muon']:,} adamw={counts['adamw']:,}")
+        elif optimizer_name != "adamw":
+            raise ValueError(f"unknown optim.optimizer: {optimizer_name!r} (expected adamw or muon)")
+        elif mup_cfg:
             from src.train.mup import build_mup_optimizer
             optimizer = build_mup_optimizer(
                 raw_model_for_optim,
