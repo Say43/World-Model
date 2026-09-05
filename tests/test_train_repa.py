@@ -234,3 +234,33 @@ def test_repa_weight_zero_matches_the_plain_flow_loss():
     plain = rectified_flow_loss(model, batch)
 
     torch.testing.assert_close(with_repa, plain)
+
+
+def test_repa_loss_exposes_its_components_for_a_fair_comparison():
+    """The REPA arm's total loss carries an extra non-negative term, so
+    ranking M3's arms by total loss would report the alignment term itself
+    as REPA's effect. The flow term must be recoverable without a second
+    forward pass (a CPU smoke of the runner produced exactly that fake
+    +0.49 'effect' before this was added)."""
+    from src.train.losses import rectified_flow_loss_with_repa
+    from src.train.repa import attach_repa_head
+
+    cfg = tiny_config(depth=6)
+    model = break_zero_init(CausalDiT(cfg))
+    attach_repa_head(model, feature_dim=32)
+    model.repa_weight = 0.5
+    latents, poses, intrinsics, _ = random_batch(cfg, batch_size=2)
+    batch = {
+        "latents": latents, "poses": poses, "intrinsics": intrinsics,
+        "dinov2": torch.randn(2, cfg.context_length, cfg.tokens_per_frame, 32),
+    }
+
+    total = rectified_flow_loss_with_repa(model, batch)
+    components = model.last_loss_components
+
+    assert set(components) == {"flow", "align"}
+    assert not components["flow"].requires_grad, "components must be detached"
+    torch.testing.assert_close(
+        components["flow"] + 0.5 * components["align"], total.detach()
+    )
+    assert components["flow"] < total, "flow term must be strictly below the total"

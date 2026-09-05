@@ -8,6 +8,7 @@ from __future__ import annotations
 import torch
 
 from src.model.diffusion_forcing import rectified_flow_target, sample_uniform_independent
+from src.train.utils import unwrap_compiled
 
 
 def rectified_flow_loss(model, batch: dict) -> torch.Tensor:
@@ -64,12 +65,21 @@ def rectified_flow_loss_with_repa(model, batch: dict) -> torch.Tensor:
     from src.train.repa import repa_loss  # local: baseline arm never imports REPA
 
     align = repa_loss(projected, batch["dinov2"].to(projected.dtype))
+
+    # The optimizer minimizes flow + weight*align, but the two arms of M3's
+    # ablation can only be COMPARED on the flow term: the REPA arm's total
+    # is larger by construction (it carries an extra non-negative term), so
+    # ranking arms by total loss would report the alignment term itself as
+    # a "REPA effect". Stashed on the model so the training loop can log the
+    # components without a second forward pass; kept as detached tensors so
+    # reading them costs a device sync only if the caller asks for one.
+    unwrap_compiled(model).last_loss_components = {
+        "flow": flow.detach(), "align": align.detach(),
+    }
     return flow + _repa_weight(model) * align
 
 
 def _repa_weight(model) -> float:
-    from src.train.utils import unwrap_compiled
-
     weight = getattr(unwrap_compiled(model), "repa_weight", None)
     if weight is None:
         raise AttributeError(

@@ -1,0 +1,90 @@
+# M3: the project's headline measurement -- REPA on/off x Muon vs AdamW,
+# 2 seeds, equal wall-clock per arm.
+#
+# NOT RUNNABLE AS COMMITTED. ticket_hours is null on purpose: a concrete
+# GPU-hour ticket is presented to the user and approved before any value
+# goes here, and only into the Kaggle-side copy at runtime. Same guard as
+# configs/m2_mup_lr_sweep.yaml, and tests/test_m3_ablation.py enforces it.
+#
+# Two prerequisites before this can be scheduled:
+#   1. The M3 dataset must be re-precomputed WITH DINOv2 features:
+#        python scripts/preprocess/precompute_dataset.py --tier m3 \
+#            --out-dir /kaggle/working/nanowm_data/m3 --with-dinov2
+#      Inference-side work: it costs Kaggle weekly quota, not the 20-hour
+#      training budget.
+#   2. optim.muon_lr is a placeholder from the reference implementation, NOT
+#      a measured value. M2 swept AdamW's LR only, so comparing Muon at a
+#      guessed LR against a tuned AdamW is biased toward AdamW. Either a
+#      short Muon LR sweep runs first, or this bias is stated explicitly in
+#      the recorded result. User decision pending.
+
+run:
+  run_id: "m3_ablation"
+  milestone: "M3_ablations_15M"
+  ticket_hours: null
+  purpose: "Measure REPA and Muon effects at 40M-scale on 2 seeds, equal wall-clock per arm"
+  seed: 0
+
+data:
+  data_dir: "/kaggle/working/nanowm_data/m3"
+  context_length: 16
+  batch_size: 8
+
+model:
+  preset: "15m"
+
+ablation:
+  repa: [false, true]
+  optimizers: ["adamw", "muon"]
+  # "Ablationen brauchen >=2 Seeds" (CLAUDE.md). The runner refuses fewer.
+  seeds: [0, 1]
+  # Equal wall-clock per arm, not equal steps: Muon's Newton-Schulz and
+  # REPA's head both cost time per step, and ranking at equal step count
+  # would silently reward being slower. Filled together with ticket_hours;
+  # the runner refuses a matrix whose arms cannot fit inside the ticket.
+  seconds_per_arm: null
+  # Per-arm step horizon, from an M3 profile run (scripts/profile_*.py) --
+  # each arm's measured steps/s times seconds_per_arm. This is NOT
+  # bookkeeping: WarmupScheduler's cosine decay is shaped by total_steps,
+  # so an arm cut off by its wall-clock slice long before total_steps
+  # trains at near-peak LR the whole way. That exact mistake destroyed an
+  # M1 run (CLAUDE.md decision log: LR still 99.4% of peak at the step it
+  # diverged). Slower arms therefore get FEWER steps and a correspondingly
+  # shorter schedule -- which is precisely the cost the ablation is meant
+  # to charge them. The runner refuses to start until these are measured.
+  steps_per_arm:
+    norepa_adamw: null
+    norepa_muon: null
+    repa_adamw: null
+    repa_muon: null
+  curve_interval: 100
+  trailing_window: 200
+
+optim:
+  # From the M2 sweep. See results/m2_lr_sweep.json.
+  adamw_lr: 0.0003
+  # Reference-implementation defaults, NOT measured here -- see the header.
+  muon_lr: 0.02
+  muon_aux_adamw_lr: 0.0003
+  weight_decay: 0.0
+
+repa:
+  feature_dim: 384        # DINOv2-small (src/data/dinov2.py)
+  align_layer: null       # null -> depth // 3
+  weight: 0.5
+
+trainer:
+  # total_steps comes from ablation.steps_per_arm, per arm -- see the note
+  # there. It is deliberately absent here so no single value can be applied
+  # to arms with different throughput.
+  warmup_steps: 200
+  min_lr_ratio: 0.1
+  grad_clip: 1.0
+  ema_decay: 0.99
+
+runtime:
+  device: "cuda"
+  compile: true
+
+output:
+  path: "/kaggle/working/m3_ablation.json"
