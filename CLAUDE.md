@@ -333,6 +333,51 @@ not a clean statistical pass -- if M3/M4 training behaves oddly across
 model sizes in a way that looks LR-sensitive, revisit this entry before
 assuming muP's width-transfer is solid.
 
+### M3 ablation design (2026-09-05, built, not yet run)
+
+2×2 matrix (REPA on/off × Muon vs AdamW) at 2 seeds,
+`scripts/run_m3_ablation.py` + `configs/m3_ablation.yaml`. Five decisions
+worth carrying forward:
+
+1. **Arms are ranked on the flow term only, never the total objective.**
+   The REPA arm minimizes `flow + weight*align`; its total is larger by
+   construction. A CPU smoke of all four arms reported a "+0.49 REPA
+   effect" that was purely REPA's own auxiliary term.
+   `rectified_flow_loss_with_repa` now exposes detached `{flow, align}`
+   components and the runner compares `flow`. Any future auxiliary-loss
+   arm must do the same.
+
+2. **Equal wall-clock per arm, not equal steps.** Muon's Newton-Schulz and
+   REPA's head both cost time per step; equal-step ranking would reward
+   being slower. Consequence: each arm needs its *own* `total_steps`,
+   derived from a measured steps/s, because `WarmupScheduler`'s cosine
+   decay is shaped by `total_steps` — an arm cut off by its wall-clock
+   slice long before that horizon trains at near-peak LR throughout (the
+   M1 divergence). The runner refuses to start on unmeasured
+   `steps_per_arm` and flags any such arm as `schedule_incomplete`.
+
+3. **Paired per seed**, with sign-agreement across seeds reported
+   explicitly. At 2 seeds a pooled mean can hide an effect smaller than
+   the seed spread; `consistent_sign: false` is the honest verdict and the
+   report must say so rather than quoting the mean.
+
+4. **Muon is not combined with muP.** `scripts/train.py` refuses the
+   combination: muP's LR scaling is derived for Adam-family per-coordinate
+   updates, and its interaction with an orthogonalized update is untested.
+   Composing them silently would make the optimizer ablation measure that
+   interaction instead. Consequence: M3's AdamW arms do **not** use muP
+   either, so the optimizer comparison changes one thing at a time.
+
+5. **REPA's head lives inside the model**, applied in `CausalDiT.forward`
+   (`return_repa=True`) rather than in the loss function: under DDP a
+   parameter must be used inside the wrapped module's forward for its
+   gradient to be all-reduced. It is attached before `wrap_model`.
+
+**Open, needs a user decision before the M3 ticket:** M2 tuned AdamW's LR
+only. Comparing Muon at a reference-default LR against a tuned AdamW is
+biased toward AdamW. Either a short Muon LR sweep runs first (~0.15
+GPU-hours of M3's 5.0), or the bias is stated explicitly in the result.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |
