@@ -378,6 +378,41 @@ only. Comparing Muon at a reference-default LR against a tuned AdamW is
 biased toward AdamW. Either a short Muon LR sweep runs first (~0.15
 GPU-hours of M3's 5.0), or the bias is stated explicitly in the result.
 
+### M3-A pre-flight result (2026-09-13, results/m3_profile.json)
+
+Ticket 0.35 GPU-h, used 0.100h (359s) plus 0.001h from a config-KeyError
+attempt. Single T4, 15M preset, batch 8, compiled, after a 30-step warmup.
+
+| Arm | steps/s | vs. norepa_adamw |
+|---|---|---|
+| norepa_adamw | 17.63 | 1.00 |
+| repa_adamw | 16.20 | 0.92 |
+| norepa_muon | 9.79 | 0.56 |
+| repa_muon | 8.96 | 0.51 |
+
+**Muon costs ~44% of throughput on T4** (fp32 Newton-Schulz, 5 iterations,
+on every 2D matrix every step). REPA's head costs ~8%. Under M3's
+equal-wall-clock rule, the Muon arms therefore get ~55% of the steps the
+AdamW arms get. That is the price the ablation charges Muon; if Muon
+still wins, it wins per GPU-hour, which is the only number this project
+cares about.
+
+Muon LR probe (600 steps, REPA off, trailing-100 mean flow loss):
+0.005 → 0.503 | **0.02 → 0.460** | 0.05 → 0.469 (one NaN-skipped step at
+26, then recovered) | AdamW 3e-4 (M2's value) → 0.568.
+
+Decision: `muon_lr = 0.02` for M3-B. Bracketed on both sides (0.005 worse,
+0.05 unstable-then-slightly-worse), so the reference default holds for
+this model — the probe confirmed rather than replaced it, which is still
+worth 0.1 GPU-h against 2.4 GPU-h of Muon arms that could otherwise have
+been run at a wrong LR. Caveat: at 600 steps, Muon at 0.02 is ahead of
+AdamW by 19% in loss, *but at equal steps*, i.e. before paying its 44%
+throughput cost. M3-B is what settles that.
+
+The script's "best LR is at a grid edge" note fired falsely on this run
+(it compared against non-divergent points only); fixed to use the full
+probed grid.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |

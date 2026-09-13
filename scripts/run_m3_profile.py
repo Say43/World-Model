@@ -254,7 +254,15 @@ def main(argv=None) -> int:
             entry = probe_lr("muon", lr, cfg, device, int(profile_cfg["probe_steps"]),
                              int(profile_cfg["trailing_window"]), deadline)
             probes.append(entry)
-            flag = f"diverged@{entry['diverged_at_step']}" if entry["diverged_at_step"] is not None else "ok"
+            # nan_watchdog_raise=False means a NaN event skips that step and
+            # training continues; a finite trailing loss afterwards is a
+            # recovered instability, not a divergence, and is labelled so.
+            if entry["diverged_at_step"] is None:
+                flag = "ok"
+            elif entry["trailing_avg_loss"] != float("inf"):
+                flag = f"nan_event@{entry['diverged_at_step']}, recovered"
+            else:
+                flag = f"diverged@{entry['diverged_at_step']}"
             print(f"  muon  lr={lr:<8.4g} trailing_loss={entry['trailing_avg_loss']:.5f} [{flag}]")
             snapshot(False)
 
@@ -276,7 +284,12 @@ def main(argv=None) -> int:
         print(f"  optim.muon_lr: {best['lr'] if best else 'NO NON-DIVERGENT MUON LR -- widen the grid'}")
         for arm, steps in recommended.items():
             print(f"  ablation.steps_per_arm.{arm}: {steps}")
-        if best is not None and best["lr"] in (min(p["lr"] for p in usable), max(p["lr"] for p in usable)):
+        # Edge check against the FULL probed grid, not only the non-divergent
+        # points: an LR that diverged still brackets the optimum from above.
+        # (The first real run flagged 0.02 as "an edge" because 0.05 had been
+        # dropped from the candidate list -- a false alarm.)
+        probed = [p["lr"] for p in probes if p["optimizer"] == "muon"]
+        if best is not None and best["lr"] in (min(probed), max(probed)):
             print("\n  NOTE: the best LR sits at an edge of the probed grid, so the "
                   "optimum may lie outside it. Read the M3 Muon result with that in mind.")
         print(f"\nWrote {out_path}")

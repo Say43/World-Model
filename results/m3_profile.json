@@ -1,0 +1,131 @@
+{
+  "config": {
+    "data": {
+      "batch_size": 8,
+      "context_length": 16,
+      "data_dir": "/kaggle/input/nanowm-m3-latents"
+    },
+    "model": {
+      "preset": "15m"
+    },
+    "optim": {
+      "adamw_lr": 0.0003,
+      "muon_aux_adamw_lr": 0.0003,
+      "muon_lr": 0.02,
+      "weight_decay": 0.0
+    },
+    "output": {
+      "path": "/kaggle/working/m3_profile.json"
+    },
+    "profile": {
+      "muon_lrs": [
+        0.005,
+        0.02,
+        0.05
+      ],
+      "probe_steps": 600,
+      "safety_margin": 0.9,
+      "target_seconds_per_arm": 1800,
+      "timed_steps": 100,
+      "trailing_window": 100,
+      "warmup_steps": 30
+    },
+    "repa": {
+      "align_layer": null,
+      "feature_dim": 384,
+      "weight": 0.5
+    },
+    "run": {
+      "milestone": "M3_ablations_15M",
+      "purpose": "Measure per-arm throughput and probe Muon's LR before scheduling the M3 ablation",
+      "run_id": "m3_profile",
+      "seed": 0,
+      "ticket_hours": 0.35
+    },
+    "runtime": {
+      "compile": true,
+      "device": "cuda"
+    },
+    "trainer": {
+      "ema_decay": 0.99,
+      "grad_clip": 1.0,
+      "min_lr_ratio": 0.1
+    }
+  },
+  "git_sha": "unknown",
+  "throughput": [
+    {
+      "arm": "norepa_adamw",
+      "repa": false,
+      "optimizer": "adamw",
+      "warmup_steps": 30,
+      "timed_steps": 100,
+      "seconds": 5.671274648000008,
+      "steps_per_second": 17.632720368297683
+    },
+    {
+      "arm": "norepa_muon",
+      "repa": false,
+      "optimizer": "muon",
+      "warmup_steps": 30,
+      "timed_steps": 100,
+      "seconds": 10.215925183000024,
+      "steps_per_second": 9.788638641011842
+    },
+    {
+      "arm": "repa_adamw",
+      "repa": true,
+      "optimizer": "adamw",
+      "warmup_steps": 30,
+      "timed_steps": 100,
+      "seconds": 6.170956517000036,
+      "steps_per_second": 16.20494322468735
+    },
+    {
+      "arm": "repa_muon",
+      "repa": true,
+      "optimizer": "muon",
+      "warmup_steps": 30,
+      "timed_steps": 100,
+      "seconds": 11.162299614999995,
+      "steps_per_second": 8.958727453043737
+    }
+  ],
+  "lr_probes": [
+    {
+      "optimizer": "muon",
+      "lr": 0.005,
+      "steps": 600,
+      "diverged_at_step": null,
+      "trailing_avg_loss": 0.5033271816372872
+    },
+    {
+      "optimizer": "muon",
+      "lr": 0.02,
+      "steps": 600,
+      "diverged_at_step": null,
+      "trailing_avg_loss": 0.4601901257038116
+    },
+    {
+      "optimizer": "muon",
+      "lr": 0.05,
+      "steps": 600,
+      "diverged_at_step": 26,
+      "trailing_avg_loss": 0.4689773452281952
+    },
+    {
+      "optimizer": "adamw",
+      "lr": 0.0003,
+      "steps": 600,
+      "diverged_at_step": null,
+      "trailing_avg_loss": 0.5678687804937362
+    }
+  ],
+  "recommended_steps_per_arm": {
+    "norepa_adamw": 28565,
+    "norepa_muon": 15857,
+    "repa_adamw": 26252,
+    "repa_muon": 14513
+  },
+  "complete": true
+}
