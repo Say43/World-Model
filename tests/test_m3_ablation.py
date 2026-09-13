@@ -165,3 +165,40 @@ def test_paired_deltas_skip_cells_a_truncated_run_never_reached():
     entry = paired_deltas(results)["repa_effect"]["adamw"]
     assert list(entry["per_seed"]) == [0]
     assert "muon" not in paired_deltas(results)["repa_effect"]
+
+
+def test_checked_in_ablation_config_has_every_key_the_runner_reads(tmp_path):
+    """Same guard as the profile's: run one real arm end to end from the
+    checked-in config, so a missing block fails here and not after a
+    21-minute precompute on Kaggle."""
+    import numpy as np
+
+    from scripts.run_m3_ablation import run_arm
+
+    rng = np.random.default_rng(0)
+    for index in range(2):
+        np.savez(
+            tmp_path / f"t{index}.npz",
+            latents=rng.standard_normal((32, 16, 128)).astype("float32"),
+            poses=np.tile(np.eye(4, dtype="float32"), (32, 1, 1)),
+            intrinsics=np.array([4.0, 4.0, 2.0, 2.0], dtype="float32"),
+            dinov2=rng.standard_normal((32, 16, 384)).astype("float32"),
+        )
+
+    config = _config()
+    result = run_arm(
+        use_repa=True, optimizer="muon", seed=0,
+        data_cfg=dict(config["data"], data_dir=str(tmp_path), batch_size=2),
+        model_cfg={"preset": "5m"},
+        optim_cfg=config["optim"],
+        repa_cfg=config["repa"],
+        trainer_cfg=config["trainer"],
+        seconds_per_arm=600.0, total_steps=4, curve_interval=2,
+        trailing_window=2, device="cpu", compile_model=False,
+        hard_deadline_monotonic=__import__("time").monotonic() + 600,
+    )
+    assert result["arm"] == "repa_muon"
+    assert result["steps_completed"] == 4
+    assert result["schedule_incomplete"] is False
+    # Ranked on the flow term, which must be below the total it minimized.
+    assert result["trailing_avg_loss"] < result["trailing_avg_total_objective"]

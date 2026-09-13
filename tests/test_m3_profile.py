@@ -82,3 +82,43 @@ def test_safety_margin_shortens_rather_than_extends_the_horizon():
     exact = recommend_steps_per_arm(throughput, 600, 1.0)["a"]
     assert margined < exact
     assert _config()["profile"]["safety_margin"] < 1.0
+
+
+def _fake_dataset(tmp_path):
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    for index in range(2):
+        np.savez(
+            tmp_path / f"t{index}.npz",
+            latents=rng.standard_normal((32, 16, 128)).astype("float32"),
+            poses=np.tile(np.eye(4, dtype="float32"), (32, 1, 1)),
+            intrinsics=np.array([4.0, 4.0, 2.0, 2.0], dtype="float32"),
+            dinov2=rng.standard_normal((32, 16, 384)).astype("float32"),
+        )
+    return str(tmp_path)
+
+
+def test_checked_in_profile_config_has_every_key_the_runner_reads(tmp_path):
+    """Builds all four arms from the REAL config file.
+
+    The first Kaggle attempt died with KeyError('trainer') after the
+    21-minute precompute had already run, because configs/m3_profile.yaml
+    was missing a block build_arm reads. Asserting the presence of specific
+    keys would only re-encode today's list; constructing the arms exercises
+    whatever the code actually looks up.
+    """
+    from scripts.run_m3_profile import build_arm
+
+    config = _config()
+    config["data"] = dict(config["data"], data_dir=_fake_dataset(tmp_path), batch_size=2)
+    config["model"]["preset"] = "5m"  # the 15M target is pointless on CPU
+
+    for use_repa in (False, True):
+        for optimizer in ("adamw", "muon"):
+            model, trainer, dataloader = build_arm(
+                use_repa, optimizer, seed=0, cfg=config, device="cpu", total_steps=4
+            )
+            assert (model.repa_head is not None) == use_repa
+            assert trainer.optimizer is not None
+            assert len(dataloader) > 0

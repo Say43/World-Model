@@ -46,6 +46,15 @@ repa:
   align_layer: null
   weight: 0.5
 
+# Must match m3_ablation.yaml's trainer block: the profile times the arms
+# the ablation will actually run, so a different grad_clip or EMA setting
+# would time different work. warmup/total_steps are NOT here -- each phase
+# sets its own short horizon.
+trainer:
+  min_lr_ratio: 0.1
+  grad_clip: 1.0
+  ema_decay: 0.99
+
 profile:
   # Discarded before timing: on CUDA the first steps include torch.compile's
   # compilation, and counting them understates throughput -- which would set
