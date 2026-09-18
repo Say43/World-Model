@@ -244,9 +244,15 @@ unmeasured `steps_per_arm`.
 
 ## 7. Licences and provenance
 
-Code: MIT. DC-AE (Apache-2.0) and DINOv2-small are used as frozen dependencies;
-SD-VAE was evaluated for M0 only and rejected on token count before its licence
-became relevant. Method references: RTFM (World Labs), REPA (Yu et al.), Muon
+Code: MIT. Two frozen third-party models are downloaded at run time and not
+redistributed here: DINOv2-small (`facebook/dinov2-small`, Apache-2.0) and DC-AE
+(`mit-han-lab/dc-ae-f64c128-in-1.0-diffusers`; the SANA f32 variant was tried in M0
+only). The DC-AE *code* (`mit-han-lab/efficientvit`) is Apache-2.0; the weight
+repositories on the Hub carry no licence field of their own, so their status is
+inherited from the code release rather than stated explicitly. Nothing in this
+repository — no features, latents or checkpoints — derives from those weights;
+all training data is procedurally generated. SD-VAE was evaluated for M0 only and
+rejected on token count before its licence became relevant. Method references: RTFM (World Labs), REPA (Yu et al.), Muon
 (Jordan et al.), muP (Yang et al., `microsoft/mup`), diffusion forcing (Chen et al.),
 Target-Bench (arXiv 2511.17792).
 

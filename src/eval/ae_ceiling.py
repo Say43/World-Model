@@ -45,7 +45,8 @@ class FrozenAE:
 
 
 def _load_dc_ae(model_id: str, resolution: int) -> FrozenAE:
-    """Loads a frozen DC-AE (Apache-2.0, https://github.com/mit-han-lab/efficientvit).
+    """Loads a frozen DC-AE (code Apache-2.0, https://github.com/mit-han-lab/efficientvit;
+    the weight repos on the Hub declare no licence field, see README §7).
 
     Deferred import: this function is only called when a candidate is
     actually run, so importing ae_ceiling.py never requires torch/diffusers
