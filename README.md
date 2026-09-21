@@ -8,11 +8,14 @@ The deliverable is the measurement, not the model: which frontier training metho
 what factor, when every GPU-second is ticketed and ledgered. This is a speedrun /
 ablation project in the modded-nanogpt tradition, not a scaling project.
 
-**Status (2026-09-18).** Milestones M0–M2 closed, the M3 ablation (REPA × optimiser,
-2 seeds, paired, equal wall-clock) is built, pre-flighted and awaiting its budget
-ticket. 1.27 of 20 GPU-hours spent. No headline effect size yet; what exists is the
-measurement apparatus, the throughput and learning-rate facts it produced, and a
-record of every run that failed on the way.
+**Status (2026-09-21).** M0–M4 closed. The M3 ablation ran (§3.6): REPA lowers the
+flow loss by 7 % at equal wall-clock, consistently across seeds and optimisers; Muon
+beats AdamW-at-3e-4 by 17 % while getting 55 % of the steps, but that comparison is
+confounded by an AdamW learning rate that was never tuned without muP, and is
+reported as such. The 40M main run (§3.7) exists and was evaluated on held-out
+scenes: 21.2 dB PSNR on unseen rooms against 37.0 dB on training rooms and a 46.0 dB
+autoencoder ceiling. 10.3 of 20 GPU-hours spent, including one 3.4-hour run that
+died of an out-of-memory error and is analysed in the decision log.
 
 ## 1. Objective and constraints
 
@@ -187,22 +190,109 @@ for M3-B, removing the "tuned AdamW vs. default Muon" bias that the decision log
 flagged. The 19 % loss lead of Muon in that probe is at equal *steps*, before its
 throughput cost; M3-B is what settles it.
 
-### 3.6 Budget ledger
+### 3.6 M3-B: the ablation (`results/m3_ablation.json`, 3.76 GPU-h)
+
+Eight arms, 1 800 s each on one T4, every arm completing its full cosine schedule.
+Trailing-200 mean of the **flow** term (REPA's alignment term excluded from ranking):
+
+| arm | steps | seed 0 | seed 1 |
+|---|---|---|---|
+| no REPA, AdamW | 28 565 | 0.2902 | 0.2874 |
+| REPA, AdamW | 26 252 | 0.2686 | 0.2713 |
+| no REPA, Muon | 15 857 | 0.2385 | 0.2384 |
+| REPA, Muon | 14 513 | **0.2065** | **0.2103** |
+
+Paired per-seed deltas (negative = the treatment helped), all with the same sign in
+both seeds; seed-to-seed spread within an arm is ≤ 0.004, every effect is 5–15× that:
+
+| effect | held fixed | seed 0 | seed 1 | mean |
+|---|---|---|---|---|
+| REPA | AdamW | −0.0215 | −0.0160 | **−0.019** |
+| REPA | Muon | −0.0319 | −0.0281 | **−0.030** |
+| Muon | no REPA | −0.0517 | −0.0489 | **−0.050** |
+| Muon | REPA | −0.0621 | −0.0610 | **−0.062** |
+
+Curves, not endpoints: Muon leads at every wall-clock checkpoint from 300 s on; REPA
+is level until ~600 s and ahead from ~900 s on under both optimisers. Three
+`diverged_at_step` flags are single fp16 inf/nan-gradient steps skipped by the
+GradScaler with no visible effect on the curve.
+
+**REPA: gate passed** — 7 % lower flow loss at equal wall-clock despite an 8 %
+throughput cost, growing over training. **Muon: large effect, confounded.** M2 tuned
+AdamW's LR *under muP*; M3 ran without muP (Muon and muP are not composed, by
+decision) at `adamw_lr = 3e-4`, a default rather than a tuned value, while Muon's LR
+*was* tuned by the M3-A probe. The safe statement is that Muon at 0.02 beats AdamW at
+3e-4 by 17 % at equal wall-clock with 55 % of the steps; that it beats a *tuned* AdamW
+is not established. The two ways to settle it (a 0.1 GPU-h AdamW LR probe, or a
+2 GPU-h rerun of the AdamW arms) were offered and declined in favour of the main run.
+
+### 3.7 M4: the 40M main run and its evaluation (`results/m4_eval/`)
+
+Configuration: best M3 arm (REPA + Muon at 0.02), 40M preset, batch 8, one run, no
+retuning. The first attempt (8 GPU-h approved in two sessions) died after 3.43 GPU-h
+with a CUDA out-of-memory error in which PyTorch's allocator held 1 GB and the process
+13.5 GB; only the first checkpoint existed, so throughput had collapsed right after
+that save. The mechanism is inferred (CUDA-graph re-recording under
+`torch.compile(mode="reduce-overhead")`), not observed — Kaggle does not return logs
+of errored kernels — and a 5-minute two-mode diagnosis with checkpoint saves did
+*not* reproduce it within 300 steps (`results/m4_diagnosis.json`). The rerun used
+inductor's default mode, kept the fp32 EMA on the GPU (a 162 MB PCIe copy per step
+was a visible share of the 40M step time), added a throughput watchdog to the trainer
+(abort with checkpoint below 30 % of the profiled rate), and was cut to 2.0 GPU-h by
+the user: **25 012 steps at 3.9 steps/s, memory flat at 1.35 GB, loss 0.55 → 0.12**,
+43 fp16 steps skipped, 1.85 GPU-h.
+
+Evaluation (`scripts/run_m4_eval.py`): the first 8 frames of a 16-frame window are
+held clean at t = 0 (in-distribution for diffusion forcing) and the remaining 8 are
+integrated from noise with 50 Euler steps; PSNR/LPIPS on the predicted frames only,
+EMA weights. Held-out scenes are procedural rooms with seeds far outside the training
+range, rendered for the evaluation and never trained on.
+
+| split | windows | PSNR mean | PSNR min window | LPIPS |
+|---|---|---|---|---|
+| held-out scenes (4 rooms, seeds 1000–1003) | 16 | **21.16 dB** | 13.76 | **0.345** |
+| training scenes (room 0, 4 trajectories) | 12 | **37.01 dB** | 27.15 | **0.025** |
+| M0 autoencoder ceiling | — | 46.01 dB | — | 0.0043 |
+
+PSNR by prediction horizon +1…+8: held-out 21.1 20.3 17.7 21.6 25.4 19.7 19.0 24.5,
+training 35.5 32.6 33.6 37.3 38.8 38.1 37.9 42.4. Within a 16-frame window there is no
+monotone drift on either split; the held-out spread is dominated by which window, not
+by horizon. The grids in `results/m4_eval/` (row 1 ground truth, row 2 prediction,
+context frames dimmed) show what the numbers mean: on training rooms the model
+reproduces wall geometry, camera motion and object placement almost to the AE ceiling
+(best windows 47 dB); on unseen rooms it gets the room layout and the camera motion
+right but invents the objects that enter the view after the context frames — wrong
+colour, wrong shape, roughly the right place. That is the honest picture of a 40M model
+after 25k steps on 40 procedural rooms: pose conditioning generalises, content that
+was never visible in the context cannot, and the 16 dB gap between splits is
+memorisation of the training rooms rather than a broken pipeline.
+
+The M4 gate as written (long-horizon revisit-PSNR against ceiling and noise floor) is
+only partly answered: window-scale drift is flat, the KV-cache autoregressive rollout
+needed for revisits is not implemented, and the noise-floor calibration was never
+run. Both are open, not failed.
+
+### 3.8 Budget ledger
 
 | milestone | allocated | spent | state |
 |---|---|---|---|
 | M1 pipeline / overfit | 1.0 | 0.78 | closed by diagnosis |
 | M2 muP transfer | 3.0 | 1.17 | closed by decision |
-| M3 ablations | 5.0 | 0.10 | pre-flight done, M3-B ticket pending |
-| M4 main run (40M) | 8.0 | 0 | |
-| M5 rollout fine-tune | 2.0 | 0 | |
+| M3 ablations | 5.0 | 3.86 | done (§3.6) |
+| M4 main run (40M) | 8.0 | 5.28 | done (§3.7); 3.43 of it in the failed first attempt |
+| M5 rollout fine-tune | 2.0 | 0 | not started |
 | reserve | 1.0 | 0 | |
-| **total** | **20.0** | **1.27** | |
+| **total** | **20.0** | **10.30** | |
 
 ## 4. Limitations
 
-- There is no world-model result yet: no revisit-PSNR, no drift curve, no M3 effect
-  size. The repository currently documents the apparatus and its calibration.
+- The Muon effect in §3.6 is confounded by an untuned AdamW baseline; only the REPA
+  effect is a clean measurement.
+- The 40M model does not generalise scene *content* to unseen rooms (§3.7); the
+  evaluation is within a 16-frame window, and there is no long-horizon rollout or
+  revisit metric yet.
+- The failed M4 attempt's cause is inferred, not observed; the fix (no CUDA graphs,
+  throughput watchdog) removed the symptom without a confirmed mechanism.
 - The M2 gate is a practical call under a real ambiguity, not a statistical pass.
 - Two seeds per arm is the minimum the work rules allow; effects inside seed spread
   will be reported as `consistent_sign: false`, not as a mean.
@@ -215,7 +305,7 @@ throughput cost; M3-B is what settles it.
 
 ```bash
 pip install -e .            # torch >= 2.x, numpy; pyyaml for scripts/budget.py
-pytest -q                   # 187 tests: shapes, causality, determinism, resume, budget guards, muP, Muon, REPA
+pytest -q                   # 214 tests: shapes, causality, determinism, resume, budget guards, muP, Muon, REPA
 python scripts/budget.py status
 python scripts/train.py --config configs/smoke_cpu.yaml     # CPU smoke of the full train loop
 ```
@@ -232,15 +322,15 @@ unmeasured `steps_per_arm`.
 |---|---|
 | `CLAUDE.md` | project brief, work rules and the full decision log |
 | `budget/` | milestone allocation and the append-only run ledger |
-| `configs/` | one YAML per run (smoke, M1, M2 sweep, M3 profile, M3 ablation) |
+| `configs/` | one YAML per run (smoke, M1, M2 sweep, M3 profile, M3 ablation, M4 main) |
 | `src/data/` | procedural scenes, trajectories, renderer, DINOv2 features |
 | `src/model/` | causal DiT, blocks, Plücker raymap, diffusion forcing, KV-cache, retrieval |
 | `src/train/` | trainer, DDP, AMP, checkpoint/resume, EMA, muP, Muon, REPA, NaN watchdog, budget |
 | `src/eval/` | AE ceiling, sampler, metrics, test-frame protocol |
 | `scripts/` | training entry point, budget CLI, precompute, per-milestone runners, M1 diagnostic |
 | `kaggle/` | kernel metadata and notebooks per milestone |
-| `results/` | measured JSON artefacts (M0 ceiling, profiles, M1 gate, M2 sweep, M3 pre-flight) |
-| `tests/` | 187 unit tests |
+| `results/` | measured artefacts: M0 ceiling, profiles, M1 gate, M2 sweep, M3 pre-flight and ablation, M4 diagnosis, plan, kernel log and evaluation grids |
+| `tests/` | 214 unit tests |
 
 ## 7. Licences and provenance
 
@@ -249,10 +339,14 @@ redistributed here: DINOv2-small (`facebook/dinov2-small`, Apache-2.0) and DC-AE
 (`mit-han-lab/dc-ae-f64c128-in-1.0-diffusers`; the SANA f32 variant was tried in M0
 only). The DC-AE *code* (`mit-han-lab/efficientvit`) is Apache-2.0; the weight
 repositories on the Hub carry no licence field of their own, so their status is
-inherited from the code release rather than stated explicitly. Nothing in this
-repository — no features, latents or checkpoints — derives from those weights;
-all training data is procedurally generated. SD-VAE was evaluated for M0 only and
-rejected on token count before its licence became relevant. Method references: RTFM (World Labs), REPA (Yu et al.), Muon
+inherited from the code release rather than stated explicitly. No weights, features,
+latents or checkpoints are redistributed here, and all training data is procedurally
+generated. The one class of artefact that passes through those weights is stated
+precisely: the evaluation grids in `results/m4_eval/*.png` are DC-AE *decodes* — both
+the ground-truth row and the prediction row are latents of this project's own
+procedurally rendered rooms passed through the frozen DC-AE decoder, and they depict
+nothing but those synthetic scenes. SD-VAE was evaluated for M0 only and rejected on
+token count before its licence became relevant. Method references: RTFM (World Labs), REPA (Yu et al.), Muon
 (Jordan et al.), muP (Yang et al., `microsoft/mup`), diffusion forcing (Chen et al.),
 Target-Bench (arXiv 2511.17792).
 

@@ -178,3 +178,35 @@ def test_run_is_aborted_when_it_outlives_its_ticket(tmp_path):
     entry = json.loads(lines[0])
     assert entry["result"].startswith("[ticket_exceeded]"), entry["result"]
     assert entry["gpu_seconds"] > 0, "the GPU time actually spent must be recorded"
+
+
+def test_run_is_aborted_and_checkpointed_on_throughput_collapse(tmp_path):
+    """run.expected_steps_per_second far above what the run achieves must
+    end it with status throughput_collapse (exit 3), a checkpoint on disk
+    and one ledger line -- the M4 part 1 failure mode, caught early."""
+    ledger = tmp_path / "ledger.jsonl"
+    allocation = tmp_path / "allocation.yaml"
+    _write_allocation(allocation, total_hours=1.0, milestone_budget=0.5)
+
+    ckpt_dir = tmp_path / "checkpoints"
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path, ckpt_dir, ticket_hours=0.05)
+    cfg = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    cfg["run"]["expected_steps_per_second"] = 1e9
+    cfg["run"]["log_interval"] = 5
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    env = os.environ.copy()
+    env["NANOWM_LEDGER_PATH"] = str(ledger)
+    env["NANOWM_ALLOCATION_PATH"] = str(allocation)
+    result = subprocess.run(
+        [sys.executable, str(TRAIN_SCRIPT), "--config", str(config_path)],
+        capture_output=True, text=True, env=env, cwd=str(ROOT),
+    )
+
+    assert result.returncode == 3, result.stdout + result.stderr
+    assert "steps/s" in result.stdout
+    assert (ckpt_dir / "latest.json").exists()
+    lines = [line for line in ledger.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert json.loads(lines[0])["result"].startswith("[throughput_collapse]")

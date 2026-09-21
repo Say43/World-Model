@@ -54,6 +54,10 @@ from src.eval.chosen_ae import LATENT_GRID, RESOLUTION, encode_frames, load_chos
 TIERS = {
     "m1": {"scene_seeds": [0], "trajectories_per_scene": 1, "lengths": [128]},
     "m3": {"scene_seeds": list(range(40)), "trajectories_per_scene": 4, "lengths": [32, 64, 128]},
+    # Held-out scenes for M4's eval: seeds far outside the m3 range, so no
+    # scene the 40M model was trained on can leak into its future-frame
+    # prediction score. 4 scenes x 64 frames -> 16 non-overlapping windows.
+    "heldout": {"scene_seeds": [1000, 1001, 1002, 1003], "trajectories_per_scene": 1, "lengths": [64]},
 }
 
 

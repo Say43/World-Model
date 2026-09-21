@@ -48,6 +48,10 @@ class TicketExceeded(RuntimeError):
     """Raised when a run outlives the budget ticket it was approved for."""
 
 
+class ThroughputCollapse(RuntimeError):
+    """Raised when the step rate falls far below the profiled rate."""
+
+
 def _import_target(dotted_path: str):
     module_name, _, attr = dotted_path.rpartition(".")
     module = importlib.import_module(module_name)
@@ -187,9 +191,19 @@ def main(argv=None) -> int:
         # architecture change hits a shape torch.compile can't handle, and
         # a compile failure degrades to eager rather than aborting the run.
         if ddp_ctx.device.type == "cuda" and cfg["trainer"].get("compile", True):
+            # M4 part 1 (2026-09-19) died after 3.4 GPU-hours of an 8-hour
+            # run: throughput collapsed right after the first checkpoint
+            # save and ~12.5 GB of GPU memory outside PyTorch's allocator
+            # piled up until OOM. CUDA-graph re-recording under
+            # "reduce-overhead" is the prime suspect (graph executables are
+            # exactly such non-allocator memory); the M3 arms never
+            # checkpointed and never hit it. The mode is therefore
+            # config-gated so a long checkpointed run can opt out of
+            # cudagraphs ("default") without losing kernel fusion.
+            compile_mode = cfg["trainer"].get("compile_mode", "reduce-overhead")
             try:
-                model = torch.compile(model, mode="reduce-overhead", dynamic=False)
-                print("torch.compile: enabled")
+                model = torch.compile(model, mode=compile_mode, dynamic=False)
+                print(f"torch.compile: enabled (mode={compile_mode})")
             except Exception as exc:  # noqa: BLE001
                 print(f"torch.compile failed, continuing eager: {exc!r}", file=sys.stderr)
 
@@ -266,9 +280,34 @@ def main(argv=None) -> int:
         # is that divided by world_size.
         deadline_wall_seconds = ticket_hours * 3600.0 / max(ddp_ctx.world_size, 1)
 
+        # Throughput watchdog: a run whose step rate falls far below what
+        # its profile measured is not training, it is dying slowly (M4 part
+        # 1 spent three hours that way). Abort early, checkpoint, and let
+        # the ledger say so, rather than burning the rest of the ticket.
+        expected_sps = run_cfg.get("expected_steps_per_second")
+        collapse_ratio = float(run_cfg.get("throughput_collapse_ratio", 0.3))
+        window = {"t": time.time(), "step": 0}
+
         def on_step(res):
-            if (res["step"] + 1) % log_interval == 0 or res["nan_event"] is not None:
-                print(f"step {res['step']} loss {res['loss']:.6f} grad_norm {res['grad_norm']:.4f}")
+            step_now = res["step"] + 1
+            if step_now % log_interval == 0 or res["nan_event"] is not None:
+                now = time.time()
+                sps = (step_now - window["step"]) / max(now - window["t"], 1e-9)
+                window.update(t=now, step=step_now)
+                mem = ""
+                if ddp_ctx.device.type == "cuda":
+                    free, total = torch.cuda.mem_get_info()
+                    mem = (f" gpu_used {(total - free) / 2**30:.2f}GiB"
+                           f" torch_reserved {torch.cuda.memory_reserved() / 2**30:.2f}GiB")
+                print(f"step {res['step']} loss {res['loss']:.6f} grad_norm {res['grad_norm']:.4f}"
+                      f" {sps:.2f} steps/s{mem}", flush=True)
+                if (expected_sps and step_now % log_interval == 0 and step_now > log_interval
+                        and sps < collapse_ratio * float(expected_sps)):
+                    raise ThroughputCollapse(
+                        f"throughput {sps:.2f} steps/s at step {res['step']} is below "
+                        f"{collapse_ratio:.0%} of the profiled {float(expected_sps):.2f} steps/s"
+                        f"{mem}; aborting and checkpointing rather than spending the ticket"
+                    )
             elapsed = time.time() - start_ts
             if elapsed > deadline_wall_seconds:
                 raise TicketExceeded(
@@ -289,11 +328,11 @@ def main(argv=None) -> int:
     except SigtermInterrupt as e:
         status = "sigterm"
         result_str = f"interrupted by SIGTERM at step {e.step}, checkpoint saved"
-    except TicketExceeded as e:
-        # Not an error: the budget rule working as designed. Save what we have
-        # so the spent GPU-hours are not simply lost, then record the overrun
-        # honestly in the ledger.
-        status = "ticket_exceeded"
+    except (TicketExceeded, ThroughputCollapse) as e:
+        # Not a crash: the budget rule (or its throughput cousin) working as
+        # designed. Save what we have so the spent GPU-hours are not simply
+        # lost, then record it honestly in the ledger.
+        status = "ticket_exceeded" if isinstance(e, TicketExceeded) else "throughput_collapse"
         step_now = trainer.step if trainer is not None else -1
         if ckpt_manager is not None and trainer is not None:
             try:
@@ -329,7 +368,7 @@ def main(argv=None) -> int:
 
     # Non-zero on a ticket abort so a driving notebook or shell script can tell
     # a completed run from one the budget rules cut short.
-    return 2 if status == "ticket_exceeded" else 0
+    return 2 if status == "ticket_exceeded" else 3 if status == "throughput_collapse" else 0
 
 
 if __name__ == "__main__":

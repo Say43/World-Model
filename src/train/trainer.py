@@ -70,6 +70,8 @@ class TrainerConfig:
     grad_scaler_growth_factor: float = 2.0
     grad_scaler_backoff_factor: float = 0.5
     grad_scaler_growth_interval: int = 100_000
+    # Where the fp32 EMA shadow lives ("cpu" default, see src/train/ema.py).
+    ema_device: str = "cpu"
 
     @classmethod
     def from_dict(cls, d: dict) -> "TrainerConfig":
@@ -110,7 +112,7 @@ class Trainer:
             total_steps=config.total_steps,
             min_lr_ratio=config.min_lr_ratio,
         )
-        self.ema = EMA(unwrap_compiled(model), decay=config.ema_decay)
+        self.ema = EMA(unwrap_compiled(model), decay=config.ema_decay, device=config.ema_device)
         self.step = 0
         self.nan_events: list[NaNEvent] = []
 

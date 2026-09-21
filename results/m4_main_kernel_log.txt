@@ -1,0 +1,961 @@
+/usr/local/lib/python3.12/dist-packages/nbformat/__init__.py:96: MissingIDFieldWarning: Cell is missing an id field, this will become a hard error in future nbformat versions. You may want to use `normalize()` on your notebooks before validations (available since nbformat 5.1.4). Previous versions of nbformat are fixing this issue transparently, and will stop doing so in the future.
+
+  validate(nb)
+
+0.00s - Debugger warning: It seems that frozen modules are being used, which may
+
+0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+
+0.00s - to python to disable frozen modules.
+
+0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+
+0.00s - Debugger warning: It seems that frozen modules are being used, which may
+
+0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off
+
+0.00s - to python to disable frozen modules.
+
+0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.
+
+top-level /kaggle/input entries: [PosixPath('/kaggle/input/datasets')]
+
+project root: /kaggle/working/project
+
+torch 2.10.0+cu128, CUDA available: True
+
+Visible GPUs: 2
+
+  [0] Tesla T4 | compute capability 7.5 | 14.6 GB
+
+  [1] Tesla T4 | compute capability 7.5 | 14.6 GB
+
+
+
+PREFLIGHT OK: 2x T4, sm75
+
+torch 2.10.0+cu128, CUDA available: True
+
+Visible GPUs: 2
+
+  [0] Tesla T4 | compute capability 7.5 | 14.6 GB
+
+  [1] Tesla T4 | compute capability 7.5 | 14.6 GB
+
+
+
+PREFLIGHT OK: 2x T4, sm75
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 53.8/53.8 kB 957.2 kB/s eta 0:00:00
+
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 53.8/53.8 kB 957.2 kB/s eta 0:00:00
+
+............................................................................................................................................... [ 33%]
+
+......... [ 33%]
+
+....................................................................................................................................... [ 67%]
+
+. [ 67%]
+
+...........................................................................................................................................   [100%].   [100%]
+
+214 passed in 51.36s
+
+
+
+214 passed in 51.36s
+
+data dir: /kaggle/input/datasets/says43/nanowm-m3-latents 160 trajectories
+
+W0921 09:17:27.464000 138 torch/_inductor/utils.py:1679] [0/0] Not enough SMs to use max_autotune_gemm mode
+
+APPROVED: 0.050h for 'M4_main_run_40M' (milestone remaining after: 4.519h, total remaining after: 11.491h)
+
+REPA: align_layer=4, weight=0.5, head_params=918912
+
+torch.compile: enabled (mode=reduce-overhead)
+
+Muon: muon_lr=0.02, adamw_lr=0.0003, params muon=41,625,088 adamw=45,568
+
+step 24 loss 1.538572 grad_norm 1.3196 0.48 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 49 loss 0.942154 grad_norm 0.6258 4.22 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 74 loss 0.722773 grad_norm 0.3443 4.17 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 99 loss 0.715938 grad_norm 0.3270 4.12 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 124 loss 0.613099 grad_norm 0.2421 3.47 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 149 loss 0.562238 grad_norm 0.3095 4.03 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 174 loss 0.597843 grad_norm 0.2644 3.98 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 199 loss 0.658936 grad_norm 0.1684 3.94 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 224 loss 0.627946 grad_norm 0.1668 3.32 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 249 loss 0.604112 grad_norm 0.1187 3.82 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 274 loss 0.474439 grad_norm 0.1091 3.76 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+step 299 loss 0.494901 grad_norm 0.1638 3.77 steps/s gpu_used 1.42GiB torch_reserved 1.25GiB
+
+Logged run 'm4_diag_reduce-overhead' (0.037 GPU-hours) to ledger.
+
+
+
+=== reduce-overhead: exit 0, 139 s, 3 checkpoints, median 3.88 steps/s ===
+
+   step   24    0.48 steps/s  gpu_used  1.42 GiB
+
+   step   49    4.22 steps/s  gpu_used  1.42 GiB
+
+   step   74    4.17 steps/s  gpu_used  1.42 GiB
+
+   step   99    4.12 steps/s  gpu_used  1.42 GiB
+
+   step  124    3.47 steps/s  gpu_used  1.42 GiB
+
+   step  149    4.03 steps/s  gpu_used  1.42 GiB
+
+   step  174    3.98 steps/s  gpu_used  1.42 GiB
+
+   step  199    3.94 steps/s  gpu_used  1.42 GiB
+
+   step  224    3.32 steps/s  gpu_used  1.42 GiB
+
+   step  249    3.82 steps/s  gpu_used  1.42 GiB
+
+   step  274    3.76 steps/s  gpu_used  1.42 GiB
+
+   step  299    3.77 steps/s  gpu_used  1.42 GiB
+
+W0921 09:19:40.453000 405 torch/_inductor/utils.py:1679] [0/0] Not enough SMs to use max_autotune_gemm mode
+
+APPROVED: 0.050h for 'M4_main_run_40M' (milestone remaining after: 4.481h, total remaining after: 11.454h)
+
+REPA: align_layer=4, weight=0.5, head_params=918912
+
+torch.compile: enabled (mode=default)
+
+Muon: muon_lr=0.02, adamw_lr=0.0003, params muon=41,625,088 adamw=45,568
+
+step 24 loss 1.538572 grad_norm 1.3196 0.59 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 49 loss 0.942154 grad_norm 0.6258 3.94 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 74 loss 0.722773 grad_norm 0.3443 3.89 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 99 loss 0.715938 grad_norm 0.3270 3.81 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 124 loss 0.613099 grad_norm 0.2421 3.21 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 149 loss 0.562238 grad_norm 0.3095 3.75 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 174 loss 0.597843 grad_norm 0.2644 3.83 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 199 loss 0.658936 grad_norm 0.1684 3.89 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 224 loss 0.627946 grad_norm 0.1668 3.36 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 249 loss 0.604112 grad_norm 0.1187 3.96 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 274 loss 0.474439 grad_norm 0.1091 3.98 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 299 loss 0.494901 grad_norm 0.1638 3.99 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+Logged run 'm4_diag_default' (0.034 GPU-hours) to ledger.
+
+
+
+=== default: exit 0, 128 s, 3 checkpoints, median 3.86 steps/s ===
+
+   step   24    0.59 steps/s  gpu_used  1.35 GiB
+
+   step   49    3.94 steps/s  gpu_used  1.35 GiB
+
+   step   74    3.89 steps/s  gpu_used  1.35 GiB
+
+   step   99    3.81 steps/s  gpu_used  1.35 GiB
+
+   step  124    3.21 steps/s  gpu_used  1.35 GiB
+
+   step  149    3.75 steps/s  gpu_used  1.35 GiB
+
+   step  174    3.83 steps/s  gpu_used  1.35 GiB
+
+   step  199    3.89 steps/s  gpu_used  1.35 GiB
+
+   step  224    3.36 steps/s  gpu_used  1.35 GiB
+
+   step  249    3.96 steps/s  gpu_used  1.35 GiB
+
+   step  274    3.98 steps/s  gpu_used  1.35 GiB
+
+   step  299    3.99 steps/s  gpu_used  1.35 GiB
+
+{
+
+  "steps_per_second": 3.8600000000000003,
+
+  "ticket_hours": 2.0,
+
+  "safety": 0.9,
+
+  "total_steps": 25012,
+
+  "checkpoint_interval": 6948
+
+}
+
+checkpoint:
+
+  dir: /kaggle/working/runs/m4_main_40m/checkpoints
+
+  interval_steps: 6948
+
+data:
+
+  kwargs:
+
+    batch_size: 8
+
+    context_length: 16
+
+    data_dir: /kaggle/input/datasets/says43/nanowm-m3-latents
+
+    with_dinov2: true
+
+  target: src.train.dataset.build_dataloader
+
+loss:
+
+  target: src.train.losses.rectified_flow_loss_with_repa
+
+model:
+
+  kwargs:
+
+    context_length: 16
+
+    preset: 40m
+
+  target: src.train.model_factory.build_causal_dit
+
+optim:
+
+  lr: 0.0003
+
+  muon_lr: 0.02
+
+  optimizer: muon
+
+  weight_decay: 0.0
+
+repa:
+
+  align_layer: null
+
+  feature_dim: 384
+
+  weight: 0.5
+
+run:
+
+  expected_steps_per_second: 3.8600000000000003
+
+  log_interval: 500
+
+  milestone: M4_main_run_40M
+
+  purpose: 'Main run: 40M causal DiT, REPA + Muon (best M3 arm), one run, no retuning'
+
+  run_id: m4_main_40m
+
+  seed: 0
+
+  throughput_collapse_ratio: 0.3
+
+  ticket_hours: 2.0
+
+trainer:
+
+  amp: true
+
+  compile: true
+
+  compile_mode: default
+
+  ema_decay: 0.999
+
+  ema_device: cuda
+
+  grad_clip: 1.0
+
+  log_interval: 500
+
+  min_lr_ratio: 0.1
+
+  nan_watchdog_raise: false
+
+  total_steps: 25012
+
+  warmup_steps: 200
+
+
+
+APPROVED: 2.000h for 'M4_main_run_40M' (milestone remaining after: 2.497h, total remaining after: 9.469h)
+
+REPA: align_layer=4, weight=0.5, head_params=918912
+
+torch.compile: enabled (mode=default)
+
+Muon: muon_lr=0.02, adamw_lr=0.0003, params muon=41,625,088 adamw=45,568
+
+step 499 loss 0.547353 grad_norm 0.2088 3.77 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 999 loss 0.494200 grad_norm 0.1819 3.91 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 1499 loss 0.474483 grad_norm 0.2195 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 1999 loss 0.523054 grad_norm 0.2764 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 2499 loss 0.465147 grad_norm 0.2052 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 2999 loss 0.372924 grad_norm 0.3016 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 3499 loss 0.485574 grad_norm 0.3022 3.91 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 3999 loss 0.439968 grad_norm 0.2974 3.91 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 4499 loss 0.343545 grad_norm 0.2759 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 4999 loss 0.381023 grad_norm 0.2910 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 5499 loss 0.284427 grad_norm 0.2866 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 5999 loss 0.234146 grad_norm 0.2560 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 6499 loss 0.268636 grad_norm 0.3354 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 6999 loss 0.266286 grad_norm 0.3672 3.89 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 7499 loss 0.258716 grad_norm 0.3572 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 7999 loss 0.264687 grad_norm 0.2570 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 8499 loss 0.281070 grad_norm 0.4273 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 8999 loss 0.217858 grad_norm 0.2953 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 9499 loss 0.226938 grad_norm 0.2498 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 9999 loss 0.198700 grad_norm 0.2776 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 10499 loss 0.171626 grad_norm 0.2817 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 10999 loss 0.208018 grad_norm 0.2558 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 11499 loss 0.200412 grad_norm 0.2253 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 11999 loss 0.163594 grad_norm 0.2133 3.91 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 12499 loss 0.224205 grad_norm 0.2092 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 12999 loss 0.195975 grad_norm 0.2057 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=13272, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 13272 loss nan grad_norm nan 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 13499 loss 0.140266 grad_norm 0.1767 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=13635, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 13635 loss nan grad_norm nan 3.95 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 13999 loss 0.156519 grad_norm 0.1611 3.87 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=14342, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 14342 loss nan grad_norm nan 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 14499 loss 0.184081 grad_norm 0.1974 3.91 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 14999 loss 0.154804 grad_norm 0.2435 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=15368, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 15368 loss nan grad_norm nan 3.94 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 15499 loss 0.164773 grad_norm 0.1340 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=15716, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 15716 loss nan grad_norm nan 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 15999 loss 0.156194 grad_norm 0.1840 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=16072, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 16072 loss nan grad_norm nan 3.97 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 16499 loss 0.199559 grad_norm 0.2303 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=16730, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 16730 loss nan grad_norm nan 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=16764, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 16764 loss nan grad_norm nan 4.04 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=16987, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 16987 loss nan grad_norm nan 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 16999 loss 0.128628 grad_norm 0.1476 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=17299, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 17299 loss nan grad_norm nan 3.94 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 17499 loss 0.146293 grad_norm 0.1250 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=17758, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 17758 loss nan grad_norm nan 3.94 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 17999 loss 0.125618 grad_norm 0.1597 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=18033, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 18033 loss nan grad_norm nan 4.02 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=18173, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 18173 loss nan grad_norm nan 3.95 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=18246, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 18246 loss nan grad_norm nan 3.97 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 18499 loss 0.168178 grad_norm 0.1718 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 18999 loss 0.107038 grad_norm 0.2013 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 19499 loss 0.148913 grad_norm 0.1740 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=19667, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 19667 loss nan grad_norm nan 3.94 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 19999 loss 0.115137 grad_norm 0.1159 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=20071, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 20071 loss nan grad_norm nan 3.97 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=20202, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 20202 loss nan grad_norm nan 3.96 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=20319, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 20319 loss nan grad_norm nan 3.95 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=20344, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 20344 loss nan grad_norm nan 4.06 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=20352, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 20352 loss nan grad_norm nan 4.42 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=20358, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 20358 loss nan grad_norm nan 4.62 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 20499 loss 0.120553 grad_norm 0.1216 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=20905, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 20905 loss nan grad_norm nan 3.90 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 20999 loss 0.113605 grad_norm 0.1121 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 21499 loss 0.153684 grad_norm 0.1265 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=21710, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 21710 loss nan grad_norm nan 3.94 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 21999 loss 0.136964 grad_norm 0.2063 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=22118, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 22118 loss nan grad_norm nan 3.96 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=22172, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 22172 loss nan grad_norm nan 3.99 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=22287, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 22287 loss nan grad_norm nan 3.96 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=22335, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 22335 loss nan grad_norm nan 4.00 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 22499 loss 0.117609 grad_norm 0.2265 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=22663, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 22663 loss nan grad_norm nan 3.94 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=22694, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 22694 loss nan grad_norm nan 4.03 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=22745, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 22745 loss nan grad_norm nan 4.00 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 22999 loss 0.133112 grad_norm 0.1710 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=23036, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 23036 loss nan grad_norm nan 4.02 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=23042, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 23042 loss nan grad_norm nan 4.63 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=23407, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 23407 loss nan grad_norm nan 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=23426, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 23426 loss nan grad_norm nan 4.12 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=23456, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 23456 loss nan grad_norm nan 4.06 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 23499 loss 0.104969 grad_norm 0.0906 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=23572, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 23572 loss nan grad_norm nan 3.97 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=23781, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 23781 loss nan grad_norm nan 3.94 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=23923, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 23923 loss nan grad_norm nan 3.95 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=23997, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 23997 loss nan grad_norm nan 3.97 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 23999 loss 0.119365 grad_norm 0.1886 3.94 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=24076, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 24076 loss nan grad_norm nan 3.96 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=24102, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 24102 loss nan grad_norm nan 4.06 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=24399, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 24399 loss nan grad_norm nan 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 24499 loss 0.122976 grad_norm 0.0990 3.93 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+NaN watchdog triggered: NaNEvent(step=24522, kind='loss', detail='loss contains nan; sample=[nan]')
+
+step 24522 loss nan grad_norm nan 4.09 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+step 24999 loss 0.103020 grad_norm 0.0922 3.92 steps/s gpu_used 1.35GiB torch_reserved 1.21GiB
+
+Logged run 'm4_main_40m' (1.774 GPU-hours) to ledger.
+
+train.py exit code: 0  (0 done, 2 ticket deadline, 3 throughput collapse)
+
+{"run_id": "m4_main_40m", "start": "2026-09-21T09:21:28.746668+00:00", "end": "2026-09-21T11:07:54.215771+00:00", "gpu_seconds": 6385.46910238266, "milestone": "M4_main_run_40M", "purpose": "Main run: 40M causal DiT, REPA + Muon (best M3 arm), one run, no retuning", "result": "[ok] completed step=25012, nan_events=43", "seed": 0, "git_sha": "unknown"}
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_validators.py:205: UserWarning: The `local_dir_use_symlinks` argument is deprecated and ignored in `hf_hub_download`. Downloading to a local directory does not use symlinks anymore.
+
+  warnings.warn(
+
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_validators.py:205: UserWarning: The `local_dir_use_symlinks` argument is deprecated and ignored in `hf_hub_download`. Downloading to a local directory does not use symlinks anymore.
+
+  warnings.warn(
+
+
+
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_validators.py:205: UserWarning: The `local_dir_use_symlinks` argument is deprecated and ignored in `hf_hub_download`. Downloading to a local directory does not use symlinks anymore.
+
+  warnings.warn(
+
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+
+
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+Loading chosen AE (cuda)...
+
+  scene1000_traj00_closed_circuit_len64: 64 frames, 13 revisits
+
+  scene1001_traj00_closed_circuit_len64: 64 frames, 13 revisits
+
+  scene1002_traj00_closed_circuit_len64: 64 frames, 13 revisits
+
+  scene1003_traj00_closed_circuit_len64: 64 frames, 14 revisits
+
+
+
+Wrote 4 trajectories, 256 frames, 1.8 MB in 28.3s -> /kaggle/working/nanowm_data/heldout
+
+Loading chosen AE (cuda)...
+
+  scene1000_traj00_closed_circuit_len64: 64 frames, 13 revisits
+
+  scene1001_traj00_closed_circuit_len64: 64 frames, 13 revisits
+
+  scene1002_traj00_closed_circuit_len64: 64 frames, 13 revisits
+
+  scene1003_traj00_closed_circuit_len64: 64 frames, 14 revisits
+
+
+
+Wrote 4 trajectories, 256 frames, 1.8 MB in 28.3s -> /kaggle/working/nanowm_data/heldout
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_validators.py:205: UserWarning: The `local_dir_use_symlinks` argument is deprecated and ignored in `hf_hub_download`. Downloading to a local directory does not use symlinks anymore.
+
+  warnings.warn(
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_validators.py:205: UserWarning: The `local_dir_use_symlinks` argument is deprecated and ignored in `hf_hub_download`. Downloading to a local directory does not use symlinks anymore.
+
+  warnings.warn(
+
+
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+Flax classes are deprecated and will be removed in Diffusers v1.0.0. We recommend migrating to PyTorch classes or pinning your version of Diffusers.
+
+/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_validators.py:205: UserWarning: The `local_dir_use_symlinks` argument is deprecated and ignored in `hf_hub_download`. Downloading to a local directory does not use symlinks anymore.
+
+  warnings.warn(
+
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+
+
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+/usr/local/lib/python3.12/dist-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+
+  warnings.warn(
+
+/usr/local/lib/python3.12/dist-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=AlexNet_Weights.IMAGENET1K_V1`. You can also use `weights=AlexNet_Weights.DEFAULT` to get the most up-to-date weights.
+
+  warnings.warn(msg)
+
+/usr/local/lib/python3.12/dist-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+
+  warnings.warn(
+
+/usr/local/lib/python3.12/dist-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=AlexNet_Weights.IMAGENET1K_V1`. You can also use `weights=AlexNet_Weights.DEFAULT` to get the most up-to-date weights.
+
+  warnings.warn(msg)
+
+
+
+/usr/local/lib/python3.12/dist-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+
+  warnings.warn(
+
+/usr/local/lib/python3.12/dist-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=AlexNet_Weights.IMAGENET1K_V1`. You can also use `weights=AlexNet_Weights.DEFAULT` to get the most up-to-date weights.
+
+  warnings.warn(msg)
+
+Loaded EMA weights from step 25012
+
+Setting up [LPIPS] perceptual loss: trunk [alex], v[0.1], spatial [off]
+
+Downloading: "https://download.pytorch.org/models/alexnet-owt-7be5be79.pth" to /root/.cache/torch/hub/checkpoints/alexnet-owt-7be5be79.pth
+
+Loaded EMA weights from step 25012
+
+Setting up [LPIPS] perceptual loss: trunk [alex], v[0.1], spatial [off]
+
+Downloading: "https://download.pytorch.org/models/alexnet-owt-7be5be79.pth" to /root/.cache/torch/hub/checkpoints/alexnet-owt-7be5be79.pth
+
+  0%|          | 0.00/233M [00:00<?, ?B/s]  8%|▊         | 18.0M/233M [00:00<00:01, 188MB/s] 17%|█▋        | 39.0M/233M [00:00<00:00, 206MB/s]  0%|          | 0.00/233M [00:00<?, ?B/s]  8%|▊         | 18.0M/233M [00:00<00:01, 188MB/s]
+
+  0%|          | 0.00/233M [00:00<?, ?B/s]  8%|▊         | 18.0M/233M [00:00<00:01, 188MB/s] 26%|██▌       | 60.1M/233M [00:00<00:00, 213MB/s] 35%|███▍      | 81.1M/233M [00:00<00:00, 215MB/s] 17%|█▋        | 39.0M/233M [00:00<00:00, 206MB/s] 26%|██▌       | 60.1M/233M [00:00<00:00, 213MB/s]
+
+ 17%|█▋        | 39.0M/233M [00:00<00:00, 206MB/s] 26%|██▌       | 60.1M/233M [00:00<00:00, 213MB/s] 44%|████▍     | 102M/233M [00:00<00:00, 218MB/s]  53%|█████▎    | 124M/233M [00:00<00:00, 219MB/s] 35%|███▍      | 81.1M/233M [00:00<00:00, 215MB/s] 44%|████▍     | 102M/233M [00:00<00:00, 218MB/s] 
+
+ 35%|███▍      | 81.1M/233M [00:00<00:00, 215MB/s] 44%|████▍     | 102M/233M [00:00<00:00, 218MB/s]  62%|██████▏   | 145M/233M [00:00<00:00, 219MB/s] 53%|█████▎    | 124M/233M [00:00<00:00, 219MB/s] 62%|██████▏   | 145M/233M [00:00<00:00, 219MB/s]
+
+ 53%|█████▎    | 124M/233M [00:00<00:00, 219MB/s] 62%|██████▏   | 145M/233M [00:00<00:00, 219MB/s] 71%|███████   | 166M/233M [00:00<00:00, 215MB/s] 80%|███████▉  | 186M/233M [00:00<00:00, 206MB/s] 71%|███████   | 166M/233M [00:00<00:00, 215MB/s] 80%|███████▉  | 186M/233M [00:00<00:00, 206MB/s]
+
+ 71%|███████   | 166M/233M [00:00<00:00, 215MB/s] 80%|███████▉  | 186M/233M [00:00<00:00, 206MB/s] 88%|████████▊ | 206M/233M [00:01<00:00, 200MB/s] 97%|█████████▋| 225M/233M [00:01<00:00, 197MB/s]100%|██████████| 233M/233M [00:01<00:00, 207MB/s]
+
+ 88%|████████▊ | 206M/233M [00:01<00:00, 200MB/s] 97%|█████████▋| 225M/233M [00:01<00:00, 197MB/s]100%|██████████| 233M/233M [00:01<00:00, 207MB/s]
+
+
+
+ 88%|████████▊ | 206M/233M [00:01<00:00, 200MB/s] 97%|█████████▋| 225M/233M [00:01<00:00, 197MB/s]100%|██████████| 233M/233M [00:01<00:00, 207MB/s]
+
+Loading model from: /usr/local/lib/python3.12/dist-packages/lpips/weights/v0.1/alex.pth
+
+
+
+Held-out scenes (4 trajectories):
+
+  heldout_scene1000_traj00_closed_circuit_len64_w000: PSNR 17.38 dB, LPIPS 0.3503
+
+  heldout_scene1000_traj00_closed_circuit_len64_w016: PSNR 17.11 dB, LPIPS 0.4242
+
+  heldout_scene1000_traj00_closed_circuit_len64_w032: PSNR 34.94 dB, LPIPS 0.2830
+
+  heldout_scene1000_traj00_closed_circuit_len64_w048: PSNR 21.31 dB, LPIPS 0.2742
+
+  heldout_scene1001_traj00_closed_circuit_len64_w000: PSNR 23.59 dB, LPIPS 0.2647
+
+  heldout_scene1001_traj00_closed_circuit_len64_w016: PSNR 25.52 dB, LPIPS 0.2767
+
+  heldout_scene1001_traj00_closed_circuit_len64_w032: PSNR 16.69 dB, LPIPS 0.4245
+
+  heldout_scene1001_traj00_closed_circuit_len64_w048: PSNR 16.64 dB, LPIPS 0.3858
+
+  heldout_scene1002_traj00_closed_circuit_len64_w000: PSNR 29.15 dB, LPIPS 0.2017
+
+  heldout_scene1002_traj00_closed_circuit_len64_w016: PSNR 15.91 dB, LPIPS 0.4623
+
+  heldout_scene1002_traj00_closed_circuit_len64_w032: PSNR 15.54 dB, LPIPS 0.4656
+
+  heldout_scene1002_traj00_closed_circuit_len64_w048: PSNR 21.44 dB, LPIPS 0.3725
+
+  heldout_scene1003_traj00_closed_circuit_len64_w000: PSNR 25.54 dB, LPIPS 0.1749
+
+  heldout_scene1003_traj00_closed_circuit_len64_w016: PSNR 16.94 dB, LPIPS 0.4357
+
+  heldout_scene1003_traj00_closed_circuit_len64_w032: PSNR 13.76 dB, LPIPS 0.5232
+
+  heldout_scene1003_traj00_closed_circuit_len64_w048: PSNR 27.10 dB, LPIPS 0.2067
+
+
+
+Training scenes, reference (4 trajectories):
+
+  train_scene000_traj00_closed_circuit_len32_w000: PSNR 47.45 dB, LPIPS 0.0110
+
+  train_scene000_traj00_closed_circuit_len32_w016: PSNR 35.30 dB, LPIPS 0.0225
+
+  train_scene000_traj01_out_and_back_len64_w000: PSNR 33.77 dB, LPIPS 0.0401
+
+  train_scene000_traj01_out_and_back_len64_w016: PSNR 46.16 dB, LPIPS 0.0039
+
+  train_scene000_traj01_out_and_back_len64_w032: PSNR 30.80 dB, LPIPS 0.0446
+
+  train_scene000_traj01_out_and_back_len64_w048: PSNR 37.60 dB, LPIPS 0.0115
+
+  train_scene000_traj02_closed_circuit_len128_w000: PSNR 27.15 dB, LPIPS 0.0439
+
+  train_scene000_traj02_closed_circuit_len128_w016: PSNR 32.14 dB, LPIPS 0.0452
+
+  train_scene000_traj02_closed_circuit_len128_w032: PSNR 38.39 dB, LPIPS 0.0209
+
+  train_scene000_traj02_closed_circuit_len128_w048: PSNR 30.67 dB, LPIPS 0.0286
+
+  train_scene000_traj03_out_and_back_len32_w000: PSNR 46.74 dB, LPIPS 0.0126
+
+  train_scene000_traj03_out_and_back_len32_w016: PSNR 37.98 dB, LPIPS 0.0121
+
+
+
+=== M4 eval @ step 25012 (8 context -> 8 predicted frames) ===
+
+        heldout: PSNR 21.16 dB (min window 13.76), LPIPS 0.3454
+
+                 by horizon: +1:21.1 +2:20.3 +3:17.7 +4:21.6 +5:25.4 +6:19.7 +7:19.0 +8:24.5
+
+train_reference: PSNR 37.01 dB (min window 27.15), LPIPS 0.0247
+
+                 by horizon: +1:35.5 +2:32.6 +3:33.6 +4:37.3 +5:38.8 +6:38.1 +7:37.9 +8:42.4
+
+M0 ceiling: PSNR 46.01 dB, LPIPS 0.0043
+
+Wrote /kaggle/working/m4_eval/m4_eval.json and 56 images
+
+Loading model from: /usr/local/lib/python3.12/dist-packages/lpips/weights/v0.1/alex.pth
+
+
+
+Held-out scenes (4 trajectories):
+
+  heldout_scene1000_traj00_closed_circuit_len64_w000: PSNR 17.38 dB, LPIPS 0.3503
+
+  heldout_scene1000_traj00_closed_circuit_len64_w016: PSNR 17.11 dB, LPIPS 0.4242
+
+  heldout_scene1000_traj00_closed_circuit_len64_w032: PSNR 34.94 dB, LPIPS 0.2830
+
+  heldout_scene1000_traj00_closed_circuit_len64_w048: PSNR 21.31 dB, LPIPS 0.2742
+
+  heldout_scene1001_traj00_closed_circuit_len64_w000: PSNR 23.59 dB, LPIPS 0.2647
+
+  heldout_scene1001_traj00_closed_circuit_len64_w016: PSNR 25.52 dB, LPIPS 0.2767
+
+  heldout_scene1001_traj00_closed_circuit_len64_w032: PSNR 16.69 dB, LPIPS 0.4245
+
+  heldout_scene1001_traj00_closed_circuit_len64_w048: PSNR 16.64 dB, LPIPS 0.3858
+
+  heldout_scene1002_traj00_closed_circuit_len64_w000: PSNR 29.15 dB, LPIPS 0.2017
+
+  heldout_scene1002_traj00_closed_circuit_len64_w016: PSNR 15.91 dB, LPIPS 0.4623
+
+  heldout_scene1002_traj00_closed_circuit_len64_w032: PSNR 15.54 dB, LPIPS 0.4656
+
+  heldout_scene1002_traj00_closed_circuit_len64_w048: PSNR 21.44 dB, LPIPS 0.3725
+
+  heldout_scene1003_traj00_closed_circuit_len64_w000: PSNR 25.54 dB, LPIPS 0.1749
+
+  heldout_scene1003_traj00_closed_circuit_len64_w016: PSNR 16.94 dB, LPIPS 0.4357
+
+  heldout_scene1003_traj00_closed_circuit_len64_w032: PSNR 13.76 dB, LPIPS 0.5232
+
+  heldout_scene1003_traj00_closed_circuit_len64_w048: PSNR 27.10 dB, LPIPS 0.2067
+
+
+
+Training scenes, reference (4 trajectories):
+
+  train_scene000_traj00_closed_circuit_len32_w000: PSNR 47.45 dB, LPIPS 0.0110
+
+  train_scene000_traj00_closed_circuit_len32_w016: PSNR 35.30 dB, LPIPS 0.0225
+
+  train_scene000_traj01_out_and_back_len64_w000: PSNR 33.77 dB, LPIPS 0.0401
+
+  train_scene000_traj01_out_and_back_len64_w016: PSNR 46.16 dB, LPIPS 0.0039
+
+  train_scene000_traj01_out_and_back_len64_w032: PSNR 30.80 dB, LPIPS 0.0446
+
+  train_scene000_traj01_out_and_back_len64_w048: PSNR 37.60 dB, LPIPS 0.0115
+
+  train_scene000_traj02_closed_circuit_len128_w000: PSNR 27.15 dB, LPIPS 0.0439
+
+  train_scene000_traj02_closed_circuit_len128_w016: PSNR 32.14 dB, LPIPS 0.0452
+
+  train_scene000_traj02_closed_circuit_len128_w032: PSNR 38.39 dB, LPIPS 0.0209
+
+  train_scene000_traj02_closed_circuit_len128_w048: PSNR 30.67 dB, LPIPS 0.0286
+
+  train_scene000_traj03_out_and_back_len32_w000: PSNR 46.74 dB, LPIPS 0.0126
+
+  train_scene000_traj03_out_and_back_len32_w016: PSNR 37.98 dB, LPIPS 0.0121
+
+
+
+=== M4 eval @ step 25012 (8 context -> 8 predicted frames) ===
+
+        heldout: PSNR 21.16 dB (min window 13.76), LPIPS 0.3454
+
+                 by horizon: +1:21.1 +2:20.3 +3:17.7 +4:21.6 +5:25.4 +6:19.7 +7:19.0 +8:24.5
+
+train_reference: PSNR 37.01 dB (min window 27.15), LPIPS 0.0247
+
+                 by horizon: +1:35.5 +2:32.6 +3:33.6 +4:37.3 +5:38.8 +6:38.1 +7:37.9 +8:42.4
+
+M0 ceiling: PSNR 46.01 dB, LPIPS 0.0043
+
+Wrote /kaggle/working/m4_eval/m4_eval.json and 56 images
+
+{
+
+  "checkpoint_step": 25012,
+
+  "preset": "40m",
+
+  "context_length": 16,
+
+  "context_frames": 8,
+
+  "predicted_frames": 8,
+
+  "num_sample_steps": 50,
+
+  "m0_ceiling_psnr": 46.01169080254894,
+
+  "m0_ceiling_lpips": 0.004280852249430609
+
+}
+
+kept: {'step': 25012, 'path': 'ckpt_step00025012.pt'} ['ckpt_step00025012.pt', 'latest.json']
+
+/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\|'
+
+  cells[i][c] = re.sub('\\\\\|', '|', cell)
+
+/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\_'
+
+  text = re.sub(r'_', '\_', text) # Escape underscores in display text
+
+[NbConvertApp] Converting notebook __notebook__.ipynb to notebook
+
+[NbConvertApp] Writing 43958 bytes to __notebook__.ipynb
+
+[NbConvertApp] Converting notebook __notebook__.ipynb to html
+
+[NbConvertApp] Writing 343826 bytes to __results__.html

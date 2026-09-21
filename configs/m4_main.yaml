@@ -1,0 +1,84 @@
+# M4: the main run. Best M3 configuration (results/m3_ablation.json:
+# REPA on + Muon, lowest flow loss in both seeds), scaled to the 40M preset.
+# One run, no mid-run retuning (CLAUDE.md M4).
+#
+# NOT RUNNABLE AS COMMITTED. ticket_hours and trainer.total_steps are null
+# on purpose (tests/test_m4_eval.py guards this): the ticket is approved by
+# the user, and total_steps is derived on the Kaggle side from a measured
+# 40M REPA+Muon throughput -- WarmupScheduler's cosine decay is shaped by
+# total_steps, and a horizon the run cannot reach trains at near-peak LR
+# throughout (the M1 divergence). Both are patched only into the Kaggle
+# copy, by the M4 notebooks.
+#
+# The run is split across two Kaggle sessions (part 1 / part 2) with
+# checkpoint-resume in between, each on its own ticket, so a 12h session
+# cut never loses more than half the run. Part 1 stops on its ticket
+# deadline (exit 2, checkpoint saved); part 2 resumes and runs to
+# total_steps or its own deadline.
+#
+# LRs are M3's: muon_lr 0.02 from the M3-A probe, aux AdamW 3e-4. The M3-B
+# caveat (AdamW never tuned without muP) does not touch the Muon+REPA arm
+# itself, which is what runs here.
+
+run:
+  run_id: "m4_main_40m"
+  milestone: "M4_main_run_40M"
+  ticket_hours: null
+  purpose: "Main run: 40M causal DiT, REPA + Muon (best M3 arm), one run, no retuning"
+  seed: 0
+  log_interval: 500
+  # Set on Kaggle from the calibration run; the throughput watchdog in
+  # scripts/train.py aborts (exit 3, checkpoint saved) below 30% of it.
+  expected_steps_per_second: null
+  throughput_collapse_ratio: 0.3
+
+data:
+  target: "src.train.dataset.build_dataloader"
+  kwargs:
+    data_dir: "/kaggle/input/datasets/says43/nanowm-m3-latents"
+    context_length: 16
+    batch_size: 8
+    with_dinov2: true
+
+model:
+  target: "src.train.model_factory.build_causal_dit"
+  kwargs:
+    preset: "40m"
+    context_length: 16
+
+loss:
+  target: "src.train.losses.rectified_flow_loss_with_repa"
+
+optim:
+  optimizer: "muon"
+  muon_lr: 0.02
+  lr: 0.0003          # aux AdamW for the non-2D parameters
+  weight_decay: 0.0
+
+repa:
+  feature_dim: 384    # DINOv2-small
+  align_layer: null   # depth // 3
+  weight: 0.5
+
+trainer:
+  warmup_steps: 200
+  total_steps: null
+  min_lr_ratio: 0.1
+  grad_clip: 1.0
+  ema_decay: 0.999    # longer run than M3's arms; EMA over ~1k steps
+  amp: true
+  nan_watchdog_raise: false   # a skipped fp16 step is not a reason to abort GPU-hours
+  log_interval: 500
+  compile: true
+  # No CUDA graphs: part 1 (2026-09-19) collapsed after its first checkpoint
+  # under "reduce-overhead" with ~12.5 GB of non-allocator GPU memory. See
+  # scripts/train.py.
+  compile_mode: "default"
+  # fp32 EMA shadow on the GPU: 162 MB of VRAM instead of a 162 MB PCIe copy
+  # plus CPU averaging on every one of ~100k steps. Checkpoints store it on
+  # CPU regardless (src/train/ema.py).
+  ema_device: "cuda"
+
+checkpoint:
+  dir: "/kaggle/working/runs/m4_main_40m/checkpoints"
+  interval_steps: null        # set with total_steps on Kaggle (~every 30 min)

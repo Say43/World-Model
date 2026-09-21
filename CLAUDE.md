@@ -413,6 +413,157 @@ The script's "best LR is at a grid edge" note fired falsely on this run
 (it compared against non-divergent points only); fixed to use the full
 probed grid.
 
+### M3-B result (2026-09-18, results/m3_ablation.json) -- gate: REPA passes, Muon confounded
+
+Ticket 4.25 GPU-h approved, 3.755 used (M3 now 3.856/5.0h, 1.144h left).
+Kernel `says43/nanowm-m3-ablation`, single T4, 8 arms x 1800 s, every arm
+completed its full LR schedule (no `schedule_incomplete`). The kernel
+stayed RUNNING ~70 min after the runner finished; that was Kaggle's
+output finalization, not budget.
+
+Trailing-200 mean **flow** loss (the ranking metric; REPA's align term
+excluded), equal wall-clock per arm:
+
+| arm | steps | seed 0 | seed 1 |
+|---|---|---|---|
+| norepa_adamw | 28565 | 0.2902 | 0.2874 |
+| repa_adamw   | 26252 | 0.2686 | 0.2713 |
+| norepa_muon  | 15857 | 0.2385 | 0.2384 |
+| repa_muon    | 14513 | 0.2065 | 0.2103 |
+
+Paired per-seed deltas (negative = treatment helped), all `consistent_sign`:
+
+| effect | held fixed | seed 0 | seed 1 | mean |
+|---|---|---|---|---|
+| REPA | AdamW | -0.0215 | -0.0160 | **-0.019** |
+| REPA | Muon  | -0.0319 | -0.0281 | **-0.030** |
+| Muon | no REPA | -0.0517 | -0.0489 | **-0.050** |
+| Muon | REPA    | -0.0621 | -0.0610 | **-0.062** |
+
+Seed-to-seed spread within an arm is <= 0.004; every effect is 5-15x
+that. Curves, not just endpoints: Muon is ahead at every wall-clock
+checkpoint from 300 s on; REPA is level with no-REPA until ~600 s and
+ahead from ~900 s on under both optimizers. The two `diverged_at_step`
+flags (repa_adamw seed 0 @19633 and @25089, repa_muon seed 1 @13962) are
+single fp16 inf/nan-grad steps skipped by GradScaler with no visible
+effect on the curve -- not divergences, the flag name overstates them.
+
+**REPA: gate passed.** ~7% lower flow loss at equal wall-clock despite
+costing 8% throughput, consistent across seeds and optimizers, effect
+growing over training.
+
+**Muon: large effect, but CONFOUNDED by the AdamW LR -- skeptic veto on
+the headline number.** M2 tuned AdamW's LR *under muP* (best base LR
+0.01 at 15m; its 3e-4 arm was 22% worse at 3000 steps). M3 runs without
+muP (decision 4) and used `adamw_lr = 3e-4`, which is a default, not a
+value tuned for this parametrization -- the config header's "from the
+M2 sweep" was wrong. Muon's LR *was* tuned (M3-A probe). So the -0.05
+compares tuned Muon against likely under-tuned AdamW, and the M3 config
+header's stated worry (bias toward AdamW) was backwards. What is safe
+to say: Muon at 0.02 beats AdamW at 3e-4 by ~17% at equal wall-clock
+while getting 55% of the steps. What is not yet safe: that Muon beats a
+*tuned* AdamW.
+
+Options to resolve (needs a user decision, both borrow from M4 per the
+allocation rule if M3's 1.144h does not cover them):
+  a. AdamW SP LR probe, 600 steps x {1e-3, 3e-3, 1e-2}, ~0.1 GPU-h. If
+     3e-4 is within noise of the best, the Muon result stands as is.
+  b. If not: rerun the two AdamW arms x 2 seeds at the probed LR,
+     4 x 1800 s = 2.0 GPU-h, and recompute the paired deltas against the
+     existing Muon arms (same seeds, same init, same data order -- the
+     pairing still holds).
+
+Independent of that decision, the configuration for M4 is REPA on +
+Muon at 0.02 (best arm, both seeds), unless (b) overturns Muon.
+
+### M4 part 1 failed (2026-09-19): OOM after 3.43 GPU-h, cause: run collapsed after first checkpoint
+
+Kernel `nanowm-m4-main-run-part-1`, ticket 4.0 GPU-h (of 2 x 4.0 approved),
+40m REPA+Muon, compile "reduce-overhead", EMA on CPU. Calibration measured
+**3.46 steps/s** (not the ~8 extrapolated from 15M: Muon's Newton-Schulz on
+dim-512 matrices plus the per-step 162 MB EMA copy to CPU scale worse than
+the plain profile). total_steps 89,760, checkpoint every 6,233 steps.
+
+Died at 12,247 s with `CUDA out of memory`: PyTorch's allocator held 1.02
+GiB, the process 13.51 GiB -- ~12.5 GB *outside* the allocator. Only the
+first checkpoint (step 6,233, ~30 min in) exists, so fewer than 6,233
+steps happened in the following three hours: throughput collapsed right
+after the first `state_dict()`/`torch.save`, and memory grew until OOM.
+The kernel log is not retrievable for an ERROR kernel via the CLI, so the
+mechanism is inferred, not observed. Prime suspect: CUDA-graph
+re-recording (graph executables are non-allocator memory; the M3 arms
+under the same mode never checkpointed and ran 4 h clean; M1 checkpointed
+under this mode but without Muon/REPA).
+
+Changes for the rerun (all tested, 214 green):
+  * `trainer.compile_mode` config key; M4 uses "default" (fusion, no
+    cudagraphs). Default stays "reduce-overhead" for everything else.
+  * `trainer.ema_device`; M4 keeps the fp32 shadow on the GPU (162 MB),
+    checkpoints still store it on CPU. The CPU rule in "Subagents" above
+    was a memory precaution that does not apply at 1.1 GB peak VRAM.
+  * Throughput watchdog in scripts/train.py: logs steps/s and GPU memory
+    every log_interval; aborts with checkpoint + ledger line (status
+    `throughput_collapse`, exit 3) below 30% of
+    `run.expected_steps_per_second`. Never again three hours of a dying run.
+  * Single session instead of two parts: calibration (600 steps on the
+    real config, 4 checkpoint saves, 0.1 GPU-h) -> main run -> eval in
+    one kernel (`kaggle/nanowm-m4-main.ipynb`), so no checkpoint has to
+    survive a kernel-output round trip (part 1's checkpoint downloads as
+    0 bytes).
+
+Budget after the failure: M4 4.569 h left, M5 2.0, reserve 1.0, M3 1.144.
+
+### M4 result (2026-09-21, results/m4_eval/, kernel `nanowm-m4-main`) -- the model exists
+
+Rerun on one session, tickets 2 x 0.05 h diagnosis + 2.0 h main
+(user-approved after the part-1 failure), 1.85 GPU-h actually used.
+M4 now 5.277/8.0 h spent; M5 2.0 h, reserve 1.0 h, M3 1.144 h untouched.
+
+**Diagnosis first (results/m4_diagnosis.json):** 300 steps with checkpoint
+saves at 100/200 under both compile modes. Neither collapsed within 300
+steps -- "reduce-overhead" 3.88 steps/s, "default" 3.86 steps/s, memory
+flat at 1.42 / 1.35 GiB, 3 checkpoints each. So the part-1 mechanism is
+NOT reproduced at this scale; it needed hours, or the step-6233 save
+specifically. The main run stayed on "default" + the throughput watchdog
+and was clean: 25,012 steps, 3.9 steps/s throughout, GPU memory 1.35 GiB
+flat, 4 checkpoint saves, loss (flow + 0.5 align) 0.55 -> 0.12. 43 fp16
+inf/nan-gradient steps were skipped by the GradScaler (from step ~14k on;
+loss recovered each time); the cudagraph hypothesis stays open and is
+recorded as such, not as confirmed.
+
+**Eval (scripts/run_m4_eval.py):** 8 clean context frames + poses -> 8
+predicted frames, 50 Euler steps, EMA weights at step 25,012; PSNR/LPIPS
+on the predicted frames only; PNG grids in results/m4_eval/, GIFs under
+runs/m4_eval_gifs/ (gitignored, 30 MB).
+
+| split | windows | PSNR mean | PSNR min window | LPIPS |
+|---|---|---|---|---|
+| held-out scenes (seeds 1000-1003, never trained on) | 16 | **21.16 dB** | 13.76 | **0.345** |
+| training scenes (scene 0, 4 trajectories) | 12 | **37.01 dB** | 27.15 | **0.025** |
+| M0 AE ceiling | -- | 46.01 | -- | 0.0043 |
+
+PSNR by prediction horizon (+1..+8): held-out 21.1 20.3 17.7 21.6 25.4
+19.7 19.0 24.5; training 35.5 32.6 33.6 37.3 38.8 38.1 37.9 42.4. No
+monotone drift within a 16-frame window on either split; the held-out
+spread is dominated by *which* window, not by horizon.
+
+**Reading the pictures:** on training scenes the model reproduces wall
+geometry, viewpoint motion and object placement almost to the AE
+ceiling (best windows 47 dB). On held-out scenes it gets the room layout
+and camera motion right but invents the objects that enter the view
+after the context frames -- wrong colour, wrong shape, right place-ish.
+That is the honest picture of a 40M model trained on 40 procedural
+scenes for 25k steps: pose conditioning generalises, scene content that
+was never visible in the context cannot (and is hallucinated instead).
+The 16 dB gap between splits is memorisation of the training scenes,
+not a broken pipeline.
+
+**M4 gate as written ("revisit-PSNR and drift curve vs. M0 ceiling and
+noise floor") is only partly answered:** window-scale drift is flat;
+long-horizon revisit-PSNR needs the KV-cache autoregressive rollout,
+which is not implemented (M5 territory). The noise-floor calibration
+(eval-harness) was never run. Both are open, not failed.
+
 ### M0 autoencoder candidates → tokens per frame
 
 | AE | 128 px | 256 px |
